@@ -1,0 +1,208 @@
+
+{
+  "entities": {
+    "Session": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Session",
+      "type": "object",
+      "description": "Represents a voice and text chat session.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the session."
+        },
+        "sessionLink": {
+          "type": "string",
+          "description": "Shareable link for the session."
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Timestamp indicating when the session was created.",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "sessionLink",
+        "createdAt"
+      ]
+    },
+    "User": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "User",
+      "type": "object",
+      "description": "Represents a user participating in a session.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the user."
+        },
+        "username": {
+          "type": "string",
+          "description": "Username of the user within the session."
+        },
+        "sessionId": {
+          "type": "string",
+          "description": "Reference to Session. (Relationship: Session 1:N User)"
+        },
+        "subSessionId": {
+          "type": "string",
+          "description": "The ID of the sub-session (voice channel) the user is currently in."
+        },
+        "isScreenSharing": {
+            "type": "boolean",
+            "description": "Indicates if the user is currently sharing their screen."
+        }
+      },
+      "required": [
+        "id",
+        "username",
+        "sessionId",
+        "subSessionId"
+      ]
+    },
+    "Message": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Message",
+      "type": "object",
+      "description": "Represents a text message sent within a session.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the message."
+        },
+        "userId": {
+          "type": "string",
+          "description": "Reference to User. (Relationship: User 1:N Message)"
+        },
+        "sessionId": {
+          "type": "string",
+          "description": "Reference to Session. (Relationship: Session 1:N Message)"
+        },
+        "content": {
+          "type": "string",
+          "description": "Content of the text message."
+        },
+        "timestamp": {
+          "type": "string",
+          "description": "Timestamp indicating when the message was sent.",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "userId",
+        "sessionId",
+        "content",
+        "timestamp"
+      ]
+    },
+    "SubSession": {
+       "$schema": "http://json-schema.org/draft-07/schema#",
+       "title": "SubSession",
+       "type": "object",
+       "description": "Represents a sub-session (voice channel) within a main session.",
+       "properties": {
+         "id": {
+           "type": "string",
+           "description": "Unique identifier for the sub-session."
+         },
+         "name": {
+           "type": "string",
+           "description": "The name of the sub-session channel."
+         },
+         "createdAt": {
+           "type": "string",
+           "description": "Timestamp indicating when the sub-session was created.",
+           "format": "date-time"
+         }
+       },
+       "required": ["id", "name", "createdAt"]
+    }
+  },
+  "auth": {
+    "providers": [
+      "password",
+      "anonymous"
+    ]
+  },
+  "firestore": {
+    "structure": [
+      {
+        "path": "/sessions/{sessionId}",
+        "definition": {
+          "entityName": "Session",
+          "schema": {
+            "$ref": "#/backend/entities/Session"
+          },
+          "description": "Stores information about each chat session.",
+          "params": [
+            {
+              "name": "sessionId",
+              "description": "Unique identifier for the session."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/sessions/{sessionId}/users/{userId}",
+        "definition": {
+          "entityName": "User",
+          "schema": {
+            "$ref": "#/backend/entities/User"
+          },
+          "description": "Stores user information related to a specific session. Includes denormalized 'sessionId' for authorization independence.",
+          "params": [
+            {
+              "name": "sessionId",
+              "description": "Unique identifier for the session."
+            },
+            {
+              "name": "userId",
+              "description": "Unique identifier for the user."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/sessions/{sessionId}/messages/{messageId}",
+        "definition": {
+          "entityName": "Message",
+          "schema": {
+            "$ref": "#/backend/entities/Message"
+          },
+          "description": "Stores text messages for a particular session. Includes denormalized 'sessionId' for authorization independence.",
+          "params": [
+            {
+              "name": "sessionId",
+              "description": "Unique identifier for the session."
+            },
+            {
+              "name": "messageId",
+              "description": "Unique identifier for the message."
+            }
+          ]
+        }
+      },
+       {
+        "path": "/sessions/{sessionId}/subsessions/{subSessionId}",
+        "definition": {
+          "entityName": "SubSession",
+          "schema": { "$ref": "#/backend/entities/SubSession" },
+          "description": "Stores the sub-sessions (voice channels) for a given session.",
+          "params": [
+            {
+              "name": "sessionId",
+              "description": "Unique identifier for the session."
+            },
+            {
+              "name": "subSessionId",
+              "description": "Unique identifier for the sub-session."
+            }
+          ]
+        }
+      }
+    ],
+    "reasoning": "The Firestore structure is designed to support real-time voice and text chat sessions with a focus on authorization independence and scalability. It leverages path-based ownership and denormalization to ensure secure and efficient data access. The structure consists of three main collections: `sessions`, `users`, and `messages`. \n\n- `/sessions`: This collection stores information about each chat session. Documents in this collection contain session metadata such as `sessionLink` and `createdAt`. Security rules for this collection ensure that only authenticated users can create sessions.\n\n- `/sessions/{sessionId}/users`: This subcollection stores user information related to a specific session. Each document represents a user participating in the session. To achieve authorization independence, the `sessionId` is denormalized in each `User` document. This avoids the need for `get()` calls to the parent `session` document in security rules.\n\n- `/sessions/{sessionId}/messages`: This subcollection stores text messages for a particular session. Each document represents a message sent by a user in the session. Similar to the `users` subcollection, the `sessionId` is denormalized in each `Message` document to enable authorization independence.\n\n- `/sessions/{sessionId}/subsessions`: This subcollection stores the user-created voice channels for a session. This allows for dynamic channel creation and management within each session.\n\nThis structure supports the required QAPs:\n\n- **Authorization Independence:** Achieved through denormalizing `sessionId` into the `users` and `messages` subcollections, eliminating the need for `get()` calls in security rules.\n- **Secure List Operations:** The segregation of data into dedicated collections allows for focused security rules. For example, listing messages requires the user to be part of the session, which can be verified without complex rule logic.\n- **Scalability:** The structure is highly scalable as each session is self-contained, and operations within a session do not affect other sessions."
+  }
+}

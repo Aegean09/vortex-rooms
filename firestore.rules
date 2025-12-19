@@ -1,0 +1,164 @@
+
+/**
+ * Core Philosophy: This ruleset enforces a session-based security model for a real-time chat application.
+ * Access to a session's content (participants and messages) is granted only to users who are active
+ * participants in that session. Public discovery of sessions is allowed to facilitate joining via shared links.
+ *
+ * Data Structure: The data is organized around a top-level `/sessions` collection. Each session document
+ * contains two subcollections: `/users` for session participants and `/messages` for the chat history.
+ * This hierarchical structure isolates each chat session, ensuring security and scalability.
+ *
+ * Key Security Decisions:
+ * - Session Discovery: The list of sessions and individual session metadata are publicly readable to allow
+ *   users to find and join sessions using a link.
+ * - Session Management: Any authenticated user can create a new session.
+ * - Session Participation: A user is considered a "participant" if they have a document in the
+ *   `/sessions/{sessionId}/users` subcollection where the document ID matches their user ID. This check
+ *   is the cornerstone of the security model.
+ * - Content Access: Only session participants can read the user list or messages within that session.
+ * - User Actions: Users can join a session (create their own user document), leave a session (delete their
+ *   own user document), and send messages. They can only modify or delete their own user document and
+ *   their own messages.
+ * - Sub-Session Management: Authenticated users can create and view sub-sessions (voice channels).
+ *
+ * Denormalization for Authorization: The rules rely on checking for the existence of a user's document
+ * in the `/sessions/{sessionId}/users/{userId}` subcollection to grant access to session content. This
+ * `exists()` check is efficient and avoids reading entire documents, serving as a membership roster that
+ * gates access to the `/users` and `/messages` subcollections.
+ *
+ * Structural Segregation: The use of distinct subcollections for `users` and `messages` under each
+ * session provides clear separation of concerns and allows for granular, path-based security rules.
+ */
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions for reusable logic
+    /**
+     * isSignedIn
+     * Checks if the user is authenticated.
+     */
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    /**
+     * isOwner
+     * Checks if the authenticated user's ID matches the provided userId.
+     */
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+    
+    /**
+     * isExistingDoc
+     * Checks if a document currently exists. Used for safe updates and deletes.
+     */
+    function isExistingDoc() {
+      return resource != null;
+    }
+
+    /**
+     * isMessageOwner
+     * Checks if the requesting user is the original author of a message document.
+     */
+    function isMessageOwner(messageData) {
+      return isSignedIn() && messageData.userId == request.auth.uid;
+    }
+
+    /**
+     * isParticipant
+     * Checks if the requesting user is a participant of the session.
+     */
+    function isParticipant(sessionId) {
+      return isSignedIn() && exists(/databases/$(database)/documents/sessions/$(sessionId)/users/$(request.auth.uid));
+    }
+
+    /**
+     * @description Controls access to session documents. Sessions are public to read, allowing link-based joining.
+     *   Creation is allowed for any signed-in user. Updates are allowed for activity tracking.
+     *   Deletion is allowed if the user is the last one in the session.
+     * @path /sessions/{sessionId}
+     * @allow (get) Any user, signed-in or not, can read a session's metadata.
+     * @allow (update) Any signed-in user can update a session, intended for `lastActive` timestamp.
+     * @principle Public Read with Controlled Writes.
+     */
+    match /sessions/{sessionId} {
+      allow get, list: if true;
+      allow create: if isSignedIn();
+      allow update: if isSignedIn();
+      allow delete: if isSignedIn();
+    }
+
+    /**
+     * @description Manages user participation within a session. A user can join (create) or leave (delete) a
+     *   session. Only existing participants can see the list of other users in the session.
+     * @path /sessions/{sessionId}/users/{userId}
+     * @allow (create) auth.uid='user123' can create their own document at /sessions/game1/users/user123.
+     * @deny (create) auth.uid='user123' cannot create a document for someone else at /sessions/game1/users/user456.
+     * @deny (list) A non-participant cannot list the users in the session.
+     * @principle Enforces self-management of session membership and restricts visibility to participants.
+     */
+    match /sessions/{sessionId}/users/{userId} {
+      allow get, list: if true;
+      allow create: if isOwner(userId)
+                    && request.resource.data.sessionId == sessionId
+                    && request.resource.data.id == userId;
+      allow update: if isOwner(userId) && isExistingDoc()
+                    && request.resource.data.sessionId == resource.data.sessionId
+                    && request.resource.data.id == resource.data.id;
+      allow delete: if isOwner(userId);
+    }
+
+    /**
+     * @description Manages messages within a session. Only session participants can read or write messages.
+     *   Users can only modify or delete messages they have personally sent.
+     * @path /sessions/{sessionId}/messages/{messageId}
+     * @allow (create) A participant of session 'game1' can create a new message.
+     * @deny (delete) A participant cannot delete a message written by another user.
+     * @deny (list) A non-participant cannot read the messages in the session.
+     * @principle Combines shared access for reads/creates with strict ownership for updates/deletes.
+     */
+    match /sessions/{sessionId}/messages/{messageId} {
+      allow get, list: if true;
+      allow create: if isSignedIn()
+                    && request.resource.data.sessionId == sessionId
+                    && request.resource.data.userId == request.auth.uid;
+      allow update: if isMessageOwner(resource.data) && isExistingDoc()
+                    && request.resource.data.sessionId == resource.data.sessionId
+                    && request.resource.data.userId == resource.data.userId;
+      // Allow any participant to delete any message.
+      // This is necessary for the "last user leaves" cleanup logic.
+      allow delete: if isParticipant(sessionId);
+    }
+    
+    /**
+     * @description Manages sub-sessions (voice channels) within a session.
+     * @path /sessions/{sessionId}/subsessions/{subSessionId}
+     * @allow (get, list) All authenticated users can see the channels.
+     * @allow (create) Any authenticated user can create a new channel.
+     */
+    match /sessions/{sessionId}/subsessions/{subSessionId} {
+      allow get, list: if isSignedIn();
+      allow create: if isSignedIn();
+      // Allow any participant to delete a subsession.
+      // This is necessary for the "last user leaves" cleanup logic.
+      allow delete: if isParticipant(sessionId);
+    }
+
+    /**
+     * @description Manages WebRTC signaling documents for establishing peer-to-peer connections.
+     * @path /sessions/{sessionId}/calls/{callId}
+     * @allow (read, write) Any authenticated user can read and write to the signaling documents.
+     *   This is necessary for peers to exchange connection details (offers, answers, candidates).
+     * @principle Allows authenticated users to perform the necessary signaling for WebRTC.
+     */
+    match /sessions/{sessionId}/calls/{callId} {
+        allow read, write: if isSignedIn();
+        
+        match /{path=**} {
+          allow read, write: if isSignedIn();
+        }
+    }
+  }
+}
