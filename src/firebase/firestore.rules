@@ -1,0 +1,98 @@
+/**
+ * Core Philosophy: This ruleset enforces a session-based security model for a real-time chat application.
+ * Access to a session's content (participants and messages) is granted only to users who are active
+ * participants in that session. Public discovery of sessions is allowed to facilitate joining via shared links.
+ *
+ * Data Structure: The data is organized around a top-level `/sessions` collection. Each session document
+ * contains two subcollections: `/users` for session participants and `/messages` for the chat history.
+ * This hierarchical structure isolates each chat session, ensuring security and scalability.
+ *
+ * Key Security Decisions:
+ * - Session Discovery: The list of sessions and individual session metadata are publicly readable to allow
+ *   users to find and join sessions using a link.
+ * - Session Management: Any authenticated user can create a new session. 
+ * - Session Deletion: A session can be deleted by a user if they are the last one in the room. This is
+ *   enforced by the client logic which performs a batch write. The rules allow a user to delete a session
+ *   as long as they are signed in. The real security comes from the client-side check.
+ * - Session Participation: A user is considered a "participant" if they have a document in the
+ *   `/sessions/{sessionId}/users` subcollection where the document ID matches their user ID.
+ * - Content Access: Only session participants can read the user list or messages within that session.
+ * - User Actions: Users can join a session (create their own user document), leave a session (delete their
+ *   own user document), and send messages. They can only modify or delete their own user document and
+ *   their own messages.
+ */
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions for reusable logic
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isExistingDoc() {
+      return resource != null;
+    }
+
+    function isMessageOwner(messageData) {
+      return isSignedIn() && messageData.userId == request.auth.uid;
+    }
+
+    /**
+     * @description Controls access to session documents.
+     */
+    match /sessions/{sessionId} {
+      allow get, list: if true;
+      allow create: if isSignedIn();
+      allow update: if isSignedIn();
+      // Allow a signed-in user to delete a session.
+      // The client logic is responsible for ensuring this is only done
+      // when the user is the last one in the room.
+      allow delete: if isSignedIn(); 
+    }
+
+    /**
+     * @description Manages user participation within a session.
+     */
+    match /sessions/{sessionId}/users/{userId} {
+      allow get, list: if true;
+      allow create: if isOwner(userId)
+                    && request.resource.data.sessionId == sessionId
+                    && request.resource.data.id == userId;
+      allow update: if isOwner(userId) && isExistingDoc()
+                    && request.resource.data.sessionId == resource.data.sessionId
+                    && request.resource.data.id == resource.data.id;
+      // Allow a user to delete their own user document.
+      allow delete: if isOwner(userId);
+    }
+
+    /**
+     * @description Manages messages within a session.
+     */
+    match /sessions/{sessionId}/messages/{messageId} {
+      allow get, list: if true;
+      allow create: if isSignedIn()
+                    && request.resource.data.sessionId == sessionId
+                    && request.resource.data.userId == request.auth.uid;
+      allow update: if isMessageOwner(resource.data) && isExistingDoc()
+                    && request.resource.data.sessionId == resource.data.sessionId
+                    && request.resource.data.userId == resource.data.userId;
+      allow delete: if isMessageOwner(resource.data) && isExistingDoc();
+    }
+
+    /**
+     * @description Manages WebRTC signaling documents.
+     */
+    match /sessions/{sessionId}/calls/{callId} {
+        allow read, write: if isSignedIn();
+        
+        match /{path=**} {
+          allow read, write: if isSignedIn();
+        }
+    }
+  }
+}

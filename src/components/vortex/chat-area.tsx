@@ -1,0 +1,79 @@
+"use client";
+
+import React, { useEffect, useRef } from 'react';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Send } from 'lucide-react';
+import { type User } from './user-list';
+
+export interface Message {
+  id: string;
+  user: User;
+  text: string;
+  timestamp: string;
+}
+
+interface ChatAreaProps {
+  messages: Message[];
+  onSendMessage: (text: string) => void;
+}
+
+export function ChatArea({ messages, onSendMessage }: ChatAreaProps) {
+  const scrollAreaRef = useRef<HTMLDivElement>(null);
+  const [newMessage, setNewMessage] = React.useState('');
+
+  const handleSendMessage = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (newMessage.trim()) {
+      onSendMessage(newMessage.trim());
+      setNewMessage('');
+    }
+  };
+  
+  useEffect(() => {
+    if (scrollAreaRef.current) {
+        const viewport = scrollAreaRef.current.querySelector('[data-radix-scroll-area-viewport]');
+        if (viewport) {
+            viewport.scrollTop = viewport.scrollHeight;
+        }
+    }
+  }, [messages]);
+
+  return (
+    <div className="flex flex-col h-full bg-card/50 rounded-lg border border-border overflow-hidden">
+      <ScrollArea className="flex-grow p-4" ref={scrollAreaRef}>
+        <div className="space-y-4">
+          {messages.map((message) => (
+            <div key={message.id} className="flex items-start gap-3">
+              <Avatar className="h-8 w-8">
+                <AvatarFallback>{message.user.name.substring(0, 2).toUpperCase()}</AvatarFallback>
+              </Avatar>
+              <div className="flex flex-col">
+                <div className="flex items-baseline gap-2">
+                  <span className="font-semibold text-sm text-primary">{message.user.name}</span>
+                  <span className="text-xs text-muted-foreground">{message.timestamp}</span>
+                </div>
+                <p className="text-sm text-foreground/90">{message.text}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </ScrollArea>
+      <div className="p-4 border-t border-border">
+        <form onSubmit={handleSendMessage} className="flex items-center gap-2">
+          <Input
+            value={newMessage}
+            onChange={(e) => setNewMessage(e.target.value)}
+            placeholder="Type a message..."
+            autoComplete="off"
+          />
+          <Button type="submit" size="icon" disabled={!newMessage.trim()}>
+            <Send className="h-4 w-4" />
+          </Button>
+        </form>
+      </div>
+    </div>
+  );
+}
