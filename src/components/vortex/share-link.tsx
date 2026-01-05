@@ -6,14 +6,23 @@ import { useParams } from 'next/navigation';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Copy, Link as LinkIcon } from 'lucide-react';
+import { Copy, Link as LinkIcon, Lock, Users, Hash } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { useFirestore, useMemoFirebase, useDoc } from '@/firebase';
+import { doc } from 'firebase/firestore';
 
 export function ShareLink() {
   const [url, setUrl] = useState('');
   const { toast } = useToast();
   const params = useParams();
   const sessionId = params.sessionId as string;
+  const firestore = useFirestore();
+  
+  const sessionRef = useMemoFirebase(
+    () => (firestore ? doc(firestore, 'sessions', sessionId) : null),
+    [firestore, sessionId]
+  );
+  const { data: sessionData } = useDoc<any>(sessionRef);
 
   useEffect(() => {
     // We construct the URL to point to the join page directly
@@ -31,7 +40,31 @@ export function ShareLink() {
 
   return (
     <div className="space-y-3 flex-1">
-        <p className="text-sm font-medium text-foreground">Share this room</p>
+        <div className="flex items-center justify-between">
+          <p className="text-sm font-medium text-foreground">Share this room</p>
+          {sessionData && (
+            <div className="flex items-center gap-2">
+              {sessionData.name && (
+                <Badge variant="outline" className="text-xs">
+                  <Hash className="h-3 w-3 mr-1" />
+                  {sessionData.name}
+                </Badge>
+              )}
+              {sessionData.password && (
+                <Badge variant="outline" className="text-xs">
+                  <Lock className="h-3 w-3 mr-1" />
+                  Protected
+                </Badge>
+              )}
+              {sessionData.maxUsers && (
+                <Badge variant="outline" className="text-xs">
+                  <Users className="h-3 w-3 mr-1" />
+                  Max {sessionData.maxUsers}
+                </Badge>
+              )}
+            </div>
+          )}
+        </div>
         <div className="flex flex-col items-stretch gap-2">
             {/* Link Input and Copy Button */}
             <div className="relative flex-grow w-full">

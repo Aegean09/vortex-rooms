@@ -8,8 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Sparkles, LogIn } from 'lucide-react';
 import { useAuth, useFirestore, useUser } from '@/firebase';
 import { initiateAnonymousSignIn } from '@/firebase/non-blocking-login';
-import { nanoid } from 'nanoid';
-import { Separator } from '@/components/ui/separator';
+import { CreateRoomDialog } from '@/components/vortex/create-room-dialog';
 
 export default function HomePage() {
   const router = useRouter();
@@ -24,21 +23,6 @@ export default function HomePage() {
     }
   }, [authUser, isUserLoading, auth]);
 
-  const createRoom = async () => {
-    if (!authUser || !firestore) {
-      console.error("User not authenticated or Firestore not available, cannot create room.");
-      return;
-    }
-    try {
-      const newSessionId = nanoid(5);
-      // We are not creating the session document here anymore.
-      // The session document will be created when the first user joins in the setup page.
-      // This prevents creating empty session documents if the user abandons the setup.
-      router.push(`/session/${newSessionId}/setup`);
-    } catch (error) {
-      console.error("Error preparing to create room:", error);
-    }
-  };
 
   const joinRoom = () => {
     router.push('/join');
@@ -62,15 +46,16 @@ export default function HomePage() {
         </CardHeader>
         <CardContent>
           <div className="flex flex-col gap-4">
-            <Button
-              onClick={createRoom}
-              className="w-full h-12 text-lg font-semibold"
-              size="lg"
-              disabled={isUserLoading || !authUser}
-            >
-              <Sparkles className="mr-2 h-5 w-5" />
-              {isUserLoading ? 'Connecting...' : 'Create a New Room'}
-            </Button>
+            <CreateRoomDialog disabled={isUserLoading || !authUser}>
+              <Button
+                className="w-full h-12 text-lg font-semibold"
+                size="lg"
+                disabled={isUserLoading || !authUser}
+              >
+                <Sparkles className="mr-2 h-5 w-5" />
+                {isUserLoading ? 'Connecting...' : 'Create a New Room'}
+              </Button>
+            </CreateRoomDialog>
             <Button
               onClick={joinRoom}
               className="w-full h-12 text-lg font-semibold"
