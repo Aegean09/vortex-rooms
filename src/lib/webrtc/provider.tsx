@@ -13,6 +13,10 @@ import { Firestore, collection, onSnapshot, query, where, doc, getDocs, writeBat
 import { createPeerConnection, createOffer, handleOffer } from './webrtc';
 import { useUser, useCollection, useMemoFirebase } from '@/firebase';
 import { User as UIVer } from '@/components/vortex/user-list';
+import { usePushToTalk } from './hooks/use-push-to-talk';
+import { useRemoteVoiceActivity } from './hooks/use-remote-voice-activity';
+import { useLocalVoiceActivity } from './hooks/use-local-voice-activity';
+import { toggleMuteTracks } from './services/audio-service';
 
 
 interface WebRTCContextType {
@@ -29,6 +33,10 @@ interface WebRTCContextType {
   presenterId: string | null;
   noiseGateThreshold: number;
   setNoiseGateThreshold: (threshold: number) => void;
+  pushToTalk: boolean;
+  setPushToTalk: (enabled: boolean) => void;
+  pushToTalkKey: string;
+  setPushToTalkKey: (key: string) => void;
 }
 
 const WebRTCContext = createContext<WebRTCContextType | undefined>(undefined);
@@ -75,6 +83,21 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
   const screenShareTrackRef = useRef<MediaStreamTrack | null>(null);
   const [presenterId, setPresenterId] = useState<string | null>(null);
   const [noiseGateThreshold, setNoiseGateThreshold] = useState<number>(0.126); // Default threshold %70 (RMS value)
+  const [pushToTalk, setPushToTalk] = useState<boolean>(false);
+  const [pushToTalkKey, setPushToTalkKey] = useState<string>('Space'); // Default: Space key
+
+  // Remote voice activity detection
+  const remoteVoiceActivity = useRemoteVoiceActivity({
+    remoteStreams,
+    threshold: noiseGateThreshold,
+  });
+
+  // Local voice activity detection
+  const localVoiceActivity = useLocalVoiceActivity({
+    rawStream,
+    isMuted,
+    threshold: noiseGateThreshold,
+  });
   
   // Refs for noise gate processing
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -145,18 +168,25 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
     }
   }, [firestore, sessionId, localPeerId]);
 
+  // Push to talk hook
+  usePushToTalk({
+    localStream,
+    isMuted,
+    setIsMuted,
+    pushToTalkKey,
+    enabled: pushToTalk,
+  });
+
   const toggleMute = useCallback(() => {
-    if (localStream) {
+    if (localStream && !pushToTalk) {
       const newMutedState = !isMuted;
-      localStream.getAudioTracks().forEach(track => {
-        track.enabled = !newMutedState;
-      });
+      toggleMuteTracks(localStream, !newMutedState);
       setIsMuted(newMutedState);
       if (!newMutedState && isDeafened) {
         setIsDeafened(false);
       }
     }
-  }, [localStream, isMuted, isDeafened]);
+  }, [localStream, isMuted, isDeafened, pushToTalk]);
 
   const toggleDeafen = useCallback(() => {
     const newDeafenedState = !isDeafened;
@@ -556,6 +586,12 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
       presenterId,
       noiseGateThreshold,
       setNoiseGateThreshold,
+      pushToTalk,
+      setPushToTalk,
+      pushToTalkKey,
+      setPushToTalkKey,
+      remoteVoiceActivity,
+      localVoiceActivity,
     }}>
       {children}
       {Object.entries(remoteStreams).map(([peerId, stream]) => (
