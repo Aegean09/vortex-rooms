@@ -9,6 +9,7 @@ export interface User {
   name: string;
   isMuted?: boolean;
   subSessionId?: string; // Add subSessionId to user type
+  isScreenSharing?: boolean; // Add isScreenSharing to user type
 }
 
 interface UserListProps {

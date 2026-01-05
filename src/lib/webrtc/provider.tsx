@@ -74,7 +74,7 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
   const [screenShareStream, setScreenShareStream] = useState<MediaStream | null>(null);
   const screenShareTrackRef = useRef<MediaStreamTrack | null>(null);
   const [presenterId, setPresenterId] = useState<string | null>(null);
-  const [noiseGateThreshold, setNoiseGateThreshold] = useState<number>(0.01); // Default threshold (RMS value)
+  const [noiseGateThreshold, setNoiseGateThreshold] = useState<number>(0.126); // Default threshold %70 (RMS value)
   
   // Refs for noise gate processing
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -82,7 +82,7 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
   const analyserRef = useRef<AnalyserNode | null>(null);
   const sourceNodeRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const destinationNodeRef = useRef<MediaStreamAudioDestinationNode | null>(null);
-  const animationFrameRef = useRef<number>();
+  const animationFrameRef = useRef<number | undefined>(undefined);
 
 
   const usersCollectionRef = useMemoFirebase(
@@ -347,54 +347,68 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
   }, [rawStream, noiseGateThreshold]);
 
   // Update existing peer connections when localStream changes
+  // This is especially important when noise gate threshold changes
   useEffect(() => {
     if (!localStream || !firestore) return;
 
-    // Update all existing peer connections with new localStream tracks
-    const updateConnections = async () => {
-      for (const [peerId, pc] of Object.entries(peerConnections.current)) {
-        if (!pc || pc.connectionState === 'closed') continue;
+    // Small delay to ensure stream is fully ready
+    const timeoutId = setTimeout(() => {
+      // Update all existing peer connections with new localStream tracks
+      const updateConnections = async () => {
+        for (const [peerId, pc] of Object.entries(peerConnections.current)) {
+          if (!pc || pc.connectionState === 'closed' || pc.signalingState === 'closed') continue;
 
-        // Get current audio senders
-        const audioSenders = pc.getSenders().filter(sender => 
-          sender.track && sender.track.kind === 'audio'
-        );
+          // Get current audio senders
+          const audioSenders = pc.getSenders().filter(sender => 
+            sender.track && sender.track.kind === 'audio'
+          );
 
-        // Get new audio tracks from localStream
-        const newAudioTracks = localStream.getAudioTracks();
+          // Get new audio tracks from localStream
+          const newAudioTracks = localStream.getAudioTracks();
 
-        if (newAudioTracks.length === 0) {
-          console.warn('No audio tracks in localStream');
-          continue;
-        }
+          if (newAudioTracks.length === 0) {
+            console.warn(`No audio tracks in localStream for peer ${peerId}`);
+            continue;
+          }
 
-        // If we have senders but no track, or track is different, replace them
-        if (audioSenders.length > 0) {
-          // Replace existing tracks
-          audioSenders.forEach((sender, index) => {
-            if (index < newAudioTracks.length) {
-              const newTrack = newAudioTracks[index];
+          // If we have senders, replace tracks if they're different
+          if (audioSenders.length > 0) {
+            // Replace existing tracks with new ones (important when noise gate threshold changes)
+            for (let i = 0; i < Math.min(audioSenders.length, newAudioTracks.length); i++) {
+              const sender = audioSenders[i];
+              const newTrack = newAudioTracks[i];
+              
+              // Always replace when localStream changes (new stream created by noise gate)
+              // Track IDs will be different because it's a new MediaStreamDestination
               if (sender.track?.id !== newTrack.id) {
-                console.log(`Replacing audio track for peer ${peerId}`);
-                sender.replaceTrack(newTrack).catch(e => 
-                  console.error(`Error replacing track for ${peerId}:`, e)
-                );
+                console.log(`Replacing audio track for peer ${peerId} (track ID: ${sender.track?.id} -> ${newTrack.id})`);
+                try {
+                  await sender.replaceTrack(newTrack);
+                } catch (e) {
+                  console.error(`Error replacing track for ${peerId}:`, e);
+                }
               }
             }
-          });
-        } else {
-          // No audio senders, add new tracks
-          console.log(`Adding audio tracks to peer ${peerId}`);
-          newAudioTracks.forEach(track => {
-            pc.addTrack(track, localStream);
-          });
-          // Renegotiate after adding tracks
-          await createOffer(firestore, sessionId, localPeerId, peerId, pc);
+          } else {
+            // No audio senders, add new tracks
+            console.log(`Adding audio tracks to peer ${peerId}`);
+            newAudioTracks.forEach(track => {
+              pc.addTrack(track, localStream);
+            });
+            // Renegotiate after adding tracks
+            try {
+              await createOffer(firestore, sessionId, localPeerId, peerId, pc);
+            } catch (e) {
+              console.error(`Error creating offer for ${peerId}:`, e);
+            }
+          }
         }
-      }
-    };
+      };
 
-    updateConnections();
+      updateConnections();
+    }, 100); // Small delay to ensure stream is ready
+
+    return () => clearTimeout(timeoutId);
   }, [localStream, firestore, sessionId, localPeerId]);
 
   useEffect(() => {
@@ -433,11 +447,29 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
             
             const pc = createPeerConnection(
                 firestore, sessionId, localPeerId, remotePeerId,
-                (stream, trackType) => {
+                (track, trackType) => {
                     if (trackType === 'video') {
-                        setScreenShareStream(stream);
+                        // For video, create a new stream (screen share)
+                        setScreenShareStream(new MediaStream([track]));
                     } else {
-                        setRemoteStreams(prev => ({ ...prev, [remotePeerId]: stream }));
+                        // For audio, ensure we have a single stream per peer
+                        setRemoteStreams(prev => {
+                            const existingStream = prev[remotePeerId];
+                            if (existingStream) {
+                                // Add track to existing stream if not already present
+                                const hasTrack = existingStream.getTracks().some(t => t.id === track.id);
+                                if (!hasTrack) {
+                                    existingStream.addTrack(track);
+                                    // Force re-render by creating a new object
+                                    return { ...prev };
+                                }
+                                return prev;
+                            } else {
+                                // Create new stream for this peer
+                                const newStream = new MediaStream([track]);
+                                return { ...prev, [remotePeerId]: newStream };
+                            }
+                        });
                     }
                 },
                 () => cleanupConnection(remotePeerId)
@@ -466,11 +498,29 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
                             console.log(`Incoming call from ${remotePeerId} in same sub-session.`);
                             const pc = createPeerConnection(
                                 firestore, sessionId, localPeerId, remotePeerId,
-                                (stream, trackType) => {
+                                (track, trackType) => {
                                     if (trackType === 'video') {
-                                        setScreenShareStream(stream);
+                                        // For video, create a new stream (screen share)
+                                        setScreenShareStream(new MediaStream([track]));
                                     } else {
-                                        setRemoteStreams(prev => ({ ...prev, [remotePeerId]: stream }));
+                                        // For audio, ensure we have a single stream per peer
+                                        setRemoteStreams(prev => {
+                                            const existingStream = prev[remotePeerId];
+                                            if (existingStream) {
+                                                // Add track to existing stream if not already present
+                                                const hasTrack = existingStream.getTracks().some(t => t.id === track.id);
+                                                if (!hasTrack) {
+                                                    existingStream.addTrack(track);
+                                                    // Force re-render by creating a new object
+                                                    return { ...prev };
+                                                }
+                                                return prev;
+                                            } else {
+                                                // Create new stream for this peer
+                                                const newStream = new MediaStream([track]);
+                                                return { ...prev, [remotePeerId]: newStream };
+                                            }
+                                        });
                                     }
                                 },
                                 () => cleanupConnection(remotePeerId)
