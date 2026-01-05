@@ -1,9 +1,8 @@
-
 "use client";
 
 import { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
-import { Mic, MicOff, Headphones, PhoneOff, HeadphoneOff, ScreenShare, ScreenShareOff } from 'lucide-react';
+import { Mic, MicOff, Headphones, PhoneOff, HeadphoneOff, ScreenShare, ScreenShareOff, Settings2 } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useRouter } from 'next/navigation';
 import { type User } from './user-list';
@@ -21,6 +20,12 @@ import {
   DialogTrigger,
   DialogClose,
 } from "@/components/ui/dialog"
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover"
+import { Slider } from '@/components/ui/slider';
 import { useIsMobile } from '@/hooks/use-mobile';
 
 
@@ -31,16 +36,19 @@ interface VoiceControlsProps {
 export function VoiceControls({ currentUser }: VoiceControlsProps) {
   const { 
     localStream, 
+    rawStream, // Orijinal stream - voice activity için
     isMuted, 
     toggleMute, 
     isDeafened, 
     toggleDeafen,
     isScreenSharing,
     toggleScreenShare,
+    noiseGateThreshold,
+    setNoiseGateThreshold,
   } = useWebRTC();
   const [hasMicPermission, setHasMicPermission] = useState(false);
   const [voiceActivity, setVoiceActivity] = useState(false);
-
+  const [currentLevel, setCurrentLevel] = useState(0); // Canlı ses seviyesi
   const analyserRef = useRef<AnalyserNode | null>(null);
   const animationFrameRef = useRef<number>();
 
@@ -48,16 +56,19 @@ export function VoiceControls({ currentUser }: VoiceControlsProps) {
   const { toast } = useToast();
   const isMobile = useIsMobile();
 
-
   useEffect(() => {
-    if (localStream && localStream.getAudioTracks().length > 0) {
+    // rawStream kullan - noise gate'ten önceki orijinal ses
+    const streamToAnalyze = rawStream || localStream;
+    
+    if (streamToAnalyze && streamToAnalyze.getAudioTracks().length > 0) {
       setHasMicPermission(true);
       const audioContext = new AudioContext();
       const analyser = audioContext.createAnalyser();
       analyser.fftSize = 256;
+      analyser.smoothingTimeConstant = 0.3;
       analyserRef.current = analyser;
 
-      const source = audioContext.createMediaStreamSource(localStream);
+      const source = audioContext.createMediaStreamSource(streamToAnalyze);
       source.connect(analyser);
 
       const dataArray = new Uint8Array(analyser.frequencyBinCount);
@@ -65,10 +76,23 @@ export function VoiceControls({ currentUser }: VoiceControlsProps) {
       const checkVoiceActivity = () => {
         if (analyserRef.current && !isMuted) {
           analyserRef.current.getByteFrequencyData(dataArray);
-          const average = dataArray.reduce((acc, val) => acc + val, 0) / dataArray.length;
-          setVoiceActivity(average > 15);
+          
+          // RMS hesapla - noise gate ile aynı mantık
+          let sum = 0;
+          for (let i = 0; i < dataArray.length; i++) {
+            const normalized = dataArray[i] / 255;
+            sum += normalized * normalized;
+          }
+          const rms = Math.sqrt(sum / dataArray.length);
+          
+          // Canlı ses seviyesini güncelle (UI için)
+          setCurrentLevel(rms);
+          
+          // Noise gate threshold'unu kullan
+          setVoiceActivity(rms > noiseGateThreshold);
         } else {
             setVoiceActivity(false);
+            setCurrentLevel(0);
         }
         animationFrameRef.current = requestAnimationFrame(checkVoiceActivity);
       };
@@ -89,7 +113,24 @@ export function VoiceControls({ currentUser }: VoiceControlsProps) {
     } else {
         setHasMicPermission(false);
     }
-  }, [localStream, isMuted]);
+  }, [localStream, rawStream, isMuted, noiseGateThreshold]);
+  
+  // Logaritmik scale (dB) - insan kulağı logaritmik algılar
+  // RMS'i dB'ye çevir: dB = 20 * log10(rms)
+  // -60 dB = çok sessiz, -20 dB = normal konuşma, 0 dB = maksimum
+  const minDb = -60;
+  const maxDb = 0;
+  
+  const rmsToPercent = (rms: number): number => {
+    if (rms <= 0.0001) return 0;
+    const dB = 20 * Math.log10(rms);
+    // dB'yi 0-100 arasına map et
+    const percent = ((dB - minDb) / (maxDb - minDb)) * 100;
+    return Math.max(0, Math.min(100, Math.round(percent)));
+  };
+  
+  const levelPercent = rmsToPercent(currentLevel);
+  const thresholdPercent = rmsToPercent(noiseGateThreshold);
 
   const handleToggleMute = () => {
     if (!hasMicPermission) {
@@ -174,6 +215,96 @@ export function VoiceControls({ currentUser }: VoiceControlsProps) {
               <p>{isDeafened ? 'Undeafen' : 'Deafen'}</p>
             </TooltipContent>
           </Tooltip>
+          
+          {/* Ses Hassasiyet Ayarları */}
+          <Popover>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <PopoverTrigger asChild>
+                  <Button variant="secondary" size="icon">
+                    <Settings2 className="h-5 w-5" />
+                  </Button>
+                </PopoverTrigger>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Voice Settings</p>
+              </TooltipContent>
+            </Tooltip>
+
+            <PopoverContent className="w-80" side="top" align="end">
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <h4 className="font-medium text-sm">Noise Gate</h4>
+                  <p className="text-xs text-muted-foreground">
+                    Arka plan gürültüsünü filtreler. Yeşil çizginin altındaki sesler karşıya gitmez.
+                  </p>
+                </div>
+                
+                {/* Canlı Ses Seviyesi Göstergesi */}
+                <div className="space-y-2">
+                  <div className="flex justify-between text-xs text-muted-foreground">
+                    <span>Input Level</span>
+                    <span className={cn(
+                      "font-mono",
+                      voiceActivity ? "text-green-400" : "text-muted-foreground"
+                    )}>
+                      {voiceActivity ? "ACTIVE" : "IDLE"}
+                    </span>
+                  </div>
+                  <div className="relative h-6 bg-secondary rounded-md overflow-hidden">
+                    {/* Ses seviyesi bar */}
+                    <div 
+                      className={cn(
+                        "absolute inset-y-0 left-0 transition-all duration-75",
+                        voiceActivity 
+                          ? "bg-gradient-to-r from-green-500 to-green-400" 
+                          : "bg-gradient-to-r from-muted-foreground/50 to-muted-foreground/30"
+                      )}
+                      style={{ width: `${levelPercent}%` }}
+                    />
+                    {/* Threshold çizgisi */}
+                    <div 
+                      className="absolute inset-y-0 w-0.5 bg-primary shadow-[0_0_8px_rgba(125,249,255,0.5)]"
+                      style={{ left: `${thresholdPercent}%` }}
+                    />
+                    {/* Threshold etiketi */}
+                    <div 
+                      className="absolute -top-5 text-[10px] text-primary font-medium transform -translate-x-1/2"
+                      style={{ left: `${thresholdPercent}%` }}
+                    >
+                      Threshold
+                    </div>
+                  </div>
+                </div>
+                
+                {/* Hassasiyet Slider */}
+                <div className="space-y-3 pt-2">
+                  <div className="flex justify-between text-xs">
+                    <span className="text-muted-foreground">Hassasiyet</span>
+                    <span className="font-mono text-primary">{thresholdPercent}%</span>
+                  </div>
+                  <Slider
+                    value={[thresholdPercent]}
+                    onValueChange={([value]) => {
+                      // Yüzdeyi dB'ye, dB'yi RMS'e çevir
+                      const dB = minDb + (value / 100) * (maxDb - minDb);
+                      const rms = Math.pow(10, dB / 20);
+                      setNoiseGateThreshold(rms);
+                    }}
+                    min={0}
+                    max={100}
+                    step={1}
+                    className="w-full"
+                  />
+                  <div className="flex justify-between text-[10px] text-muted-foreground">
+                    <span>Sessiz Ortam</span>
+                    <span>Gürültülü Ortam</span>
+                  </div>
+                </div>
+              </div>
+            </PopoverContent>
+          </Popover>
+          
            {false && !isMobile && (
               <Tooltip>
                 <TooltipTrigger asChild>
