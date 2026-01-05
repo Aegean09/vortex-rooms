@@ -33,7 +33,7 @@ export const createPeerConnection = (
   sessionId: string,
   localPeerId: string,
   remotePeerId: string,
-  onTrack: (stream: MediaStream, trackType: 'audio' | 'video') => void,
+  onTrack: (track: MediaStreamTrack, trackType: 'audio' | 'video') => void,
   onDisconnect: () => void
 ): PeerConnectionWithUnsubscribe => {
   const pc: PeerConnectionWithUnsubscribe = new RTCPeerConnection(ICE_SERVERS);
@@ -67,10 +67,10 @@ export const createPeerConnection = (
 
   pc.ontrack = event => {
     const trackType = event.track.kind as 'audio' | 'video';
-    console.log(`Received ${trackType} track from ${remotePeerId}`);
-    event.streams.forEach(stream => {
-      onTrack(stream, trackType);
-    });
+    console.log(`Received ${trackType} track from ${remotePeerId} (track ID: ${event.track.id})`);
+    // Pass the track directly instead of the stream
+    // This allows us to manage streams per peer in the provider
+    onTrack(event.track, trackType);
   };
 
   pc.onconnectionstatechange = () => {
