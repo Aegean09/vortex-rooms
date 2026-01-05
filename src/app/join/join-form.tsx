@@ -7,18 +7,22 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { useFirestore, useAuth } from '@/firebase';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, collection, getDocs } from 'firebase/firestore';
 import { initiateAnonymousSignIn } from '@/firebase/non-blocking-login';
 import { useToast } from '@/hooks/use-toast';
-import { LogIn, ArrowLeft } from 'lucide-react';
+import { LogIn, ArrowLeft, Lock } from 'lucide-react';
 import { useUser } from '@/firebase/provider';
+import { Label } from '@/components/ui/label';
 
 export default function JoinForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const firestore = useFirestore();
   const [sessionId, setSessionId] = useState('');
+  const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [requiresPassword, setRequiresPassword] = useState(false);
+  const [roomName, setRoomName] = useState<string | null>(null);
   const { toast } = useToast();
 
   const auth = useAuth();
@@ -46,6 +50,46 @@ export default function JoinForm() {
     try {
       const docSnap = await getDoc(sessionRef);
       if (docSnap.exists()) {
+        const sessionData = docSnap.data();
+        
+        // Check if room requires password
+        if (sessionData.password && !requiresPassword) {
+          setRequiresPassword(true);
+          setRoomName(sessionData.name || null);
+          setIsLoading(false);
+          return;
+        }
+        
+        // Verify password if required
+        if (sessionData.password) {
+          if (password.trim() !== sessionData.password) {
+            toast({
+              variant: 'destructive',
+              title: 'Incorrect Password',
+              description: 'The password you entered is incorrect.',
+            });
+            setIsLoading(false);
+            return;
+          }
+        }
+        
+        // Check max users limit
+        if (sessionData.maxUsers) {
+          const usersRef = collection(firestore, 'sessions', sessionId.trim(), 'users');
+          const usersSnapshot = await getDocs(usersRef);
+          const currentUserCount = usersSnapshot.size;
+          
+          if (currentUserCount >= sessionData.maxUsers) {
+            toast({
+              variant: 'destructive',
+              title: 'Room Full',
+              description: `This room has reached its maximum capacity of ${sessionData.maxUsers} users.`,
+            });
+            setIsLoading(false);
+            return;
+          }
+        }
+        
         router.push(`/session/${sessionId.trim()}/setup`);
       } else {
         toast({
@@ -76,28 +120,77 @@ export default function JoinForm() {
         <CardHeader className="text-center pt-12 sm:pt-6">
           <CardTitle className="text-3xl font-bold">Join a Room</CardTitle>
           <CardDescription className="text-muted-foreground pt-2">
-            Enter the 5-character Session ID to join an existing room.
+            {requiresPassword && roomName 
+              ? `This room "${roomName}" is password protected.`
+              : 'Enter the 5-character Session ID to join an existing room.'}
           </CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleJoin} className="flex flex-col gap-4">
-            <Input
-              value={sessionId}
-              onChange={(e) => setSessionId(e.target.value)}
-              placeholder="e.g. f1HtW"
-              maxLength={5}
-              className="text-center text-lg tracking-[0.5em] h-12"
-              autoComplete="off"
-            />
-            <Button
-              type="submit"
-              className="w-full h-12 text-lg font-semibold"
-              size="lg"
-              disabled={isLoading || isUserLoading || !authUser || !sessionId.trim()}
-            >
-              <LogIn className="mr-2 h-5 w-5" />
-              {isLoading ? 'Verifying...' : 'Join'}
-            </Button>
+            {!requiresPassword ? (
+              <>
+                <Input
+                  value={sessionId}
+                  onChange={(e) => setSessionId(e.target.value)}
+                  placeholder="e.g. f1HtW"
+                  maxLength={5}
+                  className="text-center text-lg tracking-[0.5em] h-12"
+                  autoComplete="off"
+                />
+                <Button
+                  type="submit"
+                  className="w-full h-12 text-lg font-semibold"
+                  size="lg"
+                  disabled={isLoading || isUserLoading || !authUser || !sessionId.trim()}
+                >
+                  <LogIn className="mr-2 h-5 w-5" />
+                  {isLoading ? 'Verifying...' : 'Join'}
+                </Button>
+              </>
+            ) : (
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="password" className="flex items-center gap-2">
+                    <Lock className="h-4 w-4" />
+                    Password
+                  </Label>
+                  <Input
+                    id="password"
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="Enter room password"
+                    className="h-12"
+                    autoComplete="off"
+                    autoFocus
+                  />
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="flex-1"
+                    onClick={() => {
+                      setRequiresPassword(false);
+                      setPassword('');
+                      setRoomName(null);
+                    }}
+                    disabled={isLoading}
+                  >
+                    Back
+                  </Button>
+                  <Button
+                    type="submit"
+                    className="flex-1 h-12 text-lg font-semibold"
+                    size="lg"
+                    disabled={isLoading || isUserLoading || !authUser || !password.trim()}
+                  >
+                    <LogIn className="mr-2 h-5 w-5" />
+                    {isLoading ? 'Verifying...' : 'Join'}
+                  </Button>
+                </div>
+              </>
+            )}
           </form>
         </CardContent>
       </Card>

@@ -2,25 +2,45 @@
 "use client";
 
 import { useEffect, useState } from 'react';
-import { useRouter, useParams } from 'next/navigation';
-import { useAuth, useUser, useFirestore, setDocumentNonBlocking } from '@/firebase';
-import { doc, serverTimestamp } from 'firebase/firestore';
+import { useRouter, useParams, useSearchParams } from 'next/navigation';
+import { useAuth, useUser, useFirestore, setDocumentNonBlocking, useMemoFirebase, useDoc, useCollection } from '@/firebase';
+import { doc, serverTimestamp, collection } from 'firebase/firestore';
 import { initiateAnonymousSignIn } from '@/firebase/non-blocking-login';
 import { DeviceSetup } from '@/components/vortex/device-setup';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { ArrowLeft, User as UserIcon } from 'lucide-react';
+import { ArrowLeft, User as UserIcon, AlertTriangle } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
 
 export default function SetupPage() {
   const router = useRouter();
   const params = useParams();
+  const searchParams = useSearchParams();
   const sessionId = params.sessionId as string;
   const auth = useAuth();
   const firestore = useFirestore();
   const { user: authUser, isUserLoading } = useUser();
   const [username, setUsername] = useState<string | null>(null);
   const [nameInput, setNameInput] = useState('');
+  const { toast } = useToast();
+  
+  // Get room settings from query params (only available during room creation)
+  const roomName = searchParams.get('name') || undefined;
+  const password = searchParams.get('password') || undefined;
+  const maxUsers = searchParams.get('maxUsers') ? Number(searchParams.get('maxUsers')) : undefined;
+
+  // Check if room already exists and has max users limit
+  const sessionRef = useMemoFirebase(
+    () => (firestore ? doc(firestore, 'sessions', sessionId) : null),
+    [firestore, sessionId]
+  );
+  const usersRef = useMemoFirebase(
+    () => (firestore ? collection(firestore, 'sessions', sessionId, 'users') : null),
+    [firestore, sessionId]
+  );
+  const { data: sessionData } = useDoc<any>(sessionRef);
+  const { data: users } = useCollection<any>(usersRef);
 
   useEffect(() => {
     if (!isUserLoading && !authUser && auth) {
@@ -48,13 +68,49 @@ export default function SetupPage() {
   const handleSetupComplete = () => {
     if (!firestore || !authUser || !sessionId) return;
     
-    const sessionRef = doc(firestore, 'sessions', sessionId);
-    setDocumentNonBlocking(sessionRef, {
+    // Check max users limit if room already exists
+    const existingMaxUsers = sessionData?.maxUsers;
+    const currentUserCount = users?.length || 0;
+    
+    if (existingMaxUsers && currentUserCount >= existingMaxUsers) {
+      toast({
+        variant: 'destructive',
+        title: 'Room Full',
+        description: `This room has reached its maximum capacity of ${existingMaxUsers} users.`,
+      });
+      router.push('/');
+      return;
+    }
+    
+    const sessionDocRef = doc(firestore, 'sessions', sessionId);
+    
+    // Build session data with optional settings
+    const newSessionData: any = {
       createdAt: serverTimestamp(),
       lastActive: serverTimestamp(),
       id: sessionId,
-      sessionLink: `/session/${sessionId}`
-    }, { merge: true });
+      sessionLink: `/session/${sessionId}`,
+    };
+    
+    // Only set createdBy if this is a new room (no existing session data)
+    if (!sessionData) {
+      newSessionData.createdBy = authUser.uid;
+    }
+    
+    // Only add optional fields if they were provided during room creation and room doesn't exist yet
+    if (!sessionData) {
+      if (roomName) {
+        newSessionData.name = roomName;
+      }
+      if (password) {
+        newSessionData.password = password; // In production, hash this!
+      }
+      if (maxUsers && maxUsers > 0) {
+        newSessionData.maxUsers = maxUsers;
+      }
+    }
+    
+    setDocumentNonBlocking(sessionDocRef, newSessionData, { merge: true });
 
     sessionStorage.setItem(`vortex-setup-complete-${sessionId}`, 'true');
     router.push(`/session/${sessionId}`);

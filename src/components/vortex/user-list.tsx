@@ -3,6 +3,8 @@
 
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Card, CardContent } from '@/components/ui/card';
+import { useWebRTC } from '@/lib/webrtc/provider';
+import { cn } from '@/lib/utils';
 
 export interface User {
   id: string;
@@ -18,23 +20,47 @@ interface UserListProps {
 }
 
 export function UserList({ users, currentUser }: UserListProps) {
+  const { remoteVoiceActivity, localVoiceActivity } = useWebRTC();
+
   return (
     <Card className="w-full max-w-xs h-full flex flex-col bg-transparent shadow-none border-none">
       <CardContent className="flex-grow overflow-y-auto p-4">
         <ul className="space-y-3">
-          {users.map((user) => (
-            <li key={user.id} className="flex items-center gap-3">
-              <div className="relative">
-                <Avatar>
-                  <AvatarFallback>{user.name.substring(0, 2).toUpperCase()}</AvatarFallback>
-                </Avatar>
-                <span className="absolute bottom-0 right-0 block h-3 w-3 rounded-full bg-green-500 border-2 border-card" />
-              </div>
-              <span className="font-medium text-sm truncate">
-                {user.name} {user.id === currentUser?.id ? '(You)' : ''}
-              </span>
-            </li>
-          ))}
+          {users.map((user) => {
+            const isCurrentUser = user.id === currentUser?.id;
+            const voiceActivity = isCurrentUser 
+              ? null // Local user voice activity is handled separately
+              : remoteVoiceActivity[user.id];
+            const isSpeaking = isCurrentUser 
+              ? localVoiceActivity 
+              : voiceActivity?.isActive || false;
+
+            return (
+              <li key={user.id} className="flex items-center gap-3">
+                <div className="relative">
+                  <Avatar className={cn(
+                    "transition-all duration-200",
+                    isSpeaking && "ring-2 ring-green-500 ring-offset-2 ring-offset-background"
+                  )}>
+                    <AvatarFallback>{user.name.substring(0, 2).toUpperCase()}</AvatarFallback>
+                  </Avatar>
+                  <span className={cn(
+                    "absolute bottom-0 right-0 block h-3 w-3 rounded-full border-2 border-card transition-all duration-200",
+                    isSpeaking ? "bg-green-500 animate-pulse" : "bg-green-500"
+                  )} />
+                </div>
+                <span className="font-medium text-sm truncate">
+                  {user.name} {isCurrentUser ? '(You)' : ''}
+                </span>
+                {isSpeaking && (
+                  <div className="ml-auto flex items-center gap-1">
+                    <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
+                    <span className="text-xs text-muted-foreground">Speaking</span>
+                  </div>
+                )}
+              </li>
+            );
+          })}
         </ul>
       </CardContent>
     </Card>
