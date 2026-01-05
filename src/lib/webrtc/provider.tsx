@@ -17,6 +17,7 @@ import { User as UIVer } from '@/components/vortex/user-list';
 
 interface WebRTCContextType {
   localStream: MediaStream | null;
+  rawStream: MediaStream | null; // Original stream before noise gate processing
   remoteStreams: Record<string, MediaStream>;
   screenShareStream: MediaStream | null;
   toggleMute: () => void;
@@ -26,6 +27,8 @@ interface WebRTCContextType {
   isScreenSharing: boolean;
   toggleScreenShare: () => Promise<void>;
   presenterId: string | null;
+  noiseGateThreshold: number;
+  setNoiseGateThreshold: (threshold: number) => void;
 }
 
 const WebRTCContext = createContext<WebRTCContextType | undefined>(undefined);
@@ -59,6 +62,7 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
   localPeerId,
   subSessionId,
 }) => {
+  const [rawStream, setRawStream] = useState<MediaStream | null>(null);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [remoteStreams, setRemoteStreams] = useState<Record<string, MediaStream>>({});
   const [isMuted, setIsMuted] = useState(false);
@@ -70,6 +74,15 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
   const [screenShareStream, setScreenShareStream] = useState<MediaStream | null>(null);
   const screenShareTrackRef = useRef<MediaStreamTrack | null>(null);
   const [presenterId, setPresenterId] = useState<string | null>(null);
+  const [noiseGateThreshold, setNoiseGateThreshold] = useState<number>(0.01); // Default threshold (RMS value)
+  
+  // Refs for noise gate processing
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const gainNodeRef = useRef<GainNode | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const sourceNodeRef = useRef<MediaStreamAudioSourceNode | null>(null);
+  const destinationNodeRef = useRef<MediaStreamAudioDestinationNode | null>(null);
+  const animationFrameRef = useRef<number>();
 
 
   const usersCollectionRef = useMemoFirebase(
@@ -228,7 +241,7 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
                 }, 
                 video: false 
             });
-            setLocalStream(stream);
+            setRawStream(stream);
         } catch (error) {
             console.error('Error accessing media devices.', error);
         }
@@ -239,11 +252,99 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
     }
 
     return () => {
-        localStream?.getTracks().forEach(track => track.stop());
+        rawStream?.getTracks().forEach(track => track.stop());
+        setRawStream(null);
         setLocalStream(null);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
+
+  // Noise gate processing: Create processed stream from raw stream
+  useEffect(() => {
+    if (!rawStream || rawStream.getAudioTracks().length === 0) {
+      setLocalStream(null);
+      return;
+    }
+
+    // Cleanup previous audio context
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current);
+    }
+    if (sourceNodeRef.current) {
+      sourceNodeRef.current.disconnect();
+    }
+    if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
+      audioContextRef.current.close();
+    }
+
+    const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+    audioContextRef.current = audioContext;
+
+    const source = audioContext.createMediaStreamSource(rawStream);
+    sourceNodeRef.current = source;
+
+    const analyser = audioContext.createAnalyser();
+    analyser.fftSize = 256;
+    analyser.smoothingTimeConstant = 0.3;
+    analyserRef.current = analyser;
+
+    const gainNode = audioContext.createGain();
+    gainNodeRef.current = gainNode;
+
+    const destination = audioContext.createMediaStreamDestination();
+    destinationNodeRef.current = destination;
+
+    // Connect: source -> analyser -> gain -> destination
+    source.connect(analyser);
+    source.connect(gainNode);
+    gainNode.connect(destination);
+
+    // Create processed stream
+    const processedStream = destination.stream;
+    setLocalStream(processedStream);
+
+    // Noise gate processing loop
+    const dataArray = new Uint8Array(analyser.frequencyBinCount);
+    
+    const processNoiseGate = () => {
+      if (!analyserRef.current || !gainNodeRef.current) return;
+
+      analyserRef.current.getByteFrequencyData(dataArray);
+      
+      // Calculate RMS (Root Mean Square) for better voice activity detection
+      let sum = 0;
+      for (let i = 0; i < dataArray.length; i++) {
+        const normalized = dataArray[i] / 255;
+        sum += normalized * normalized;
+      }
+      const rms = Math.sqrt(sum / dataArray.length);
+
+      // Apply noise gate: mute if below threshold
+      gainNodeRef.current.gain.value = rms > noiseGateThreshold ? 1.0 : 0.0;
+
+      animationFrameRef.current = requestAnimationFrame(processNoiseGate);
+    };
+
+    processNoiseGate();
+
+    return () => {
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
+      if (sourceNodeRef.current) {
+        sourceNodeRef.current.disconnect();
+      }
+      if (gainNodeRef.current) {
+        gainNodeRef.current.disconnect();
+      }
+      if (analyserRef.current) {
+        analyserRef.current.disconnect();
+      }
+      if (audioContext.state !== 'closed') {
+        audioContext.close();
+      }
+    };
+  }, [rawStream, noiseGateThreshold]);
 
   useEffect(() => {
     const cleanupAll = () => {
@@ -340,7 +441,21 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
 
 
   return (
-    <WebRTCContext.Provider value={{ localStream, remoteStreams, screenShareStream, toggleMute, isMuted, toggleDeafen, isDeafened, isScreenSharing, toggleScreenShare, presenterId }}>
+    <WebRTCContext.Provider value={{ 
+      localStream, 
+      rawStream,
+      remoteStreams, 
+      screenShareStream, 
+      toggleMute, 
+      isMuted, 
+      toggleDeafen, 
+      isDeafened, 
+      isScreenSharing, 
+      toggleScreenShare, 
+      presenterId,
+      noiseGateThreshold,
+      setNoiseGateThreshold,
+    }}>
       {children}
       {Object.entries(remoteStreams).map(([peerId, stream]) => (
         <audio
