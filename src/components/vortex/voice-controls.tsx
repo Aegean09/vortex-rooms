@@ -2,7 +2,9 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
-import { Mic, MicOff, Headphones, PhoneOff, HeadphoneOff, ScreenShare, ScreenShareOff, Settings2 } from 'lucide-react';
+import { Mic, MicOff, Headphones, PhoneOff, HeadphoneOff, ScreenShare, ScreenShareOff, Settings2, Radio } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useRouter } from 'next/navigation';
 import { type User } from './user-list';
@@ -33,6 +35,15 @@ interface VoiceControlsProps {
     currentUser: User | null;
 }
 
+const getKeyDisplayName = (keyCode: string): string => {
+  if (keyCode === 'Space') return 'Space';
+  if (keyCode === 'MediaRecord') return 'Record';
+  if (keyCode.startsWith('Key')) return keyCode.replace('Key', '');
+  if (keyCode.startsWith('Digit')) return keyCode.replace('Digit', '');
+  if (keyCode.startsWith('Arrow')) return keyCode.replace('Arrow', 'Arrow ');
+  return keyCode;
+};
+
 export function VoiceControls({ currentUser }: VoiceControlsProps) {
   const { 
     localStream, 
@@ -45,10 +56,15 @@ export function VoiceControls({ currentUser }: VoiceControlsProps) {
     toggleScreenShare,
     noiseGateThreshold,
     setNoiseGateThreshold,
+    pushToTalk,
+    setPushToTalk,
+    pushToTalkKey,
+    setPushToTalkKey,
   } = useWebRTC();
   const [hasMicPermission, setHasMicPermission] = useState(false);
   const [voiceActivity, setVoiceActivity] = useState(false);
   const [currentLevel, setCurrentLevel] = useState(0); // Canlı ses seviyesi
+  const [isRecordingKey, setIsRecordingKey] = useState(false);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const animationFrameRef = useRef<number>();
 
@@ -111,9 +127,33 @@ export function VoiceControls({ currentUser }: VoiceControlsProps) {
         }
       };
     } else {
-        setHasMicPermission(false);
+      setHasMicPermission(false);
     }
   }, [localStream, rawStream, isMuted, noiseGateThreshold]);
+
+  // Key recording for push to talk
+  useEffect(() => {
+    if (!isRecordingKey) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      // Ignore modifier keys alone
+      if (['Control', 'Shift', 'Alt', 'Meta'].includes(event.key)) {
+        return;
+      }
+
+      // Record the key
+      setPushToTalkKey(event.code);
+      setIsRecordingKey(false);
+      event.preventDefault();
+      event.stopPropagation();
+    };
+
+    window.addEventListener('keydown', handleKeyDown, true);
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown, true);
+    };
+  }, [isRecordingKey, setPushToTalkKey]);
   
   // Logaritmik scale (dB) - insan kulağı logaritmik algılar
   // RMS'i dB'ye çevir: dB = 20 * log10(rms)
@@ -300,6 +340,60 @@ export function VoiceControls({ currentUser }: VoiceControlsProps) {
                     <span>Sessiz Ortam</span>
                     <span>Gürültülü Ortam</span>
                   </div>
+                </div>
+
+                {/* Push to Talk */}
+                <div className="space-y-3 pt-2 border-t">
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-0.5">
+                      <Label htmlFor="push-to-talk" className="text-sm font-medium flex items-center gap-2">
+                        <Radio className="h-4 w-4" />
+                        Push to Talk
+                      </Label>
+                      <p className="text-xs text-muted-foreground">
+                        Tuşa basılı tutarak konuş
+                      </p>
+                    </div>
+                    <Switch
+                      id="push-to-talk"
+                      checked={pushToTalk}
+                      onCheckedChange={setPushToTalk}
+                    />
+                  </div>
+                  {pushToTalk && (
+                    <div className="space-y-2">
+                      <Label htmlFor="push-to-talk-key" className="text-xs text-muted-foreground">
+                        Push to Talk Tuşu
+                      </Label>
+                      {isRecordingKey ? (
+                        <div className="space-y-2">
+                          <Button
+                            variant="outline"
+                            className="w-full h-8 text-xs"
+                            disabled
+                          >
+                            Recording...
+                          </Button>
+                          <p className="text-[10px] text-muted-foreground text-center">
+                            Bir tuşa basın
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          <Button
+                            variant="outline"
+                            className="w-full h-8 text-xs"
+                            onClick={() => setIsRecordingKey(true)}
+                          >
+                            {getKeyDisplayName(pushToTalkKey)}
+                          </Button>
+                          <p className="text-[10px] text-muted-foreground text-center">
+                            {getKeyDisplayName(pushToTalkKey)} tuşuna basılı tutarak konuş
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             </PopoverContent>

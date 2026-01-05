@@ -14,6 +14,7 @@ import { useFirestore } from '@/firebase';
 import { useParams } from 'next/navigation';
 import { addDoc, collection, serverTimestamp, Timestamp } from 'firebase/firestore';
 import { nanoid } from 'nanoid';
+import { useWebRTC } from '@/lib/webrtc/provider';
 
 export interface SubSession {
   id: string;
@@ -35,6 +36,7 @@ export function SubSessionList({ subSessions, users, currentUser, onSubSessionCh
   const firestore = useFirestore();
   const params = useParams();
   const sessionId = params.sessionId as string;
+  const { remoteVoiceActivity, localVoiceActivity } = useWebRTC();
 
   useEffect(() => {
     // When the user's current subsession changes, make sure its accordion item is open.
@@ -156,19 +158,41 @@ export function SubSessionList({ subSessions, users, currentUser, onSubSessionCh
               </div>
               <AccordionContent className="pt-2 pl-4">
                 <ul className="space-y-3">
-                  {sessionUsers.map((user) => (
-                    <li key={user.id} className="flex items-center gap-3">
-                      <div className="relative">
-                        <Avatar className="h-8 w-8">
-                          <AvatarFallback>{user.name.substring(0, 2).toUpperCase()}</AvatarFallback>
-                        </Avatar>
-                         <span className="absolute bottom-0 right-0 block h-2.5 w-2.5 rounded-full bg-green-500 border-2 border-card" />
-                      </div>
-                      <span className="font-medium text-sm truncate">
-                        {user.name} {user.id === currentUser?.id ? '(You)' : ''}
-                      </span>
-                    </li>
-                  ))}
+                  {sessionUsers.map((user) => {
+                    const isCurrentUser = user.id === currentUser?.id;
+                    const voiceActivity = isCurrentUser 
+                      ? null 
+                      : remoteVoiceActivity[user.id];
+                    const isSpeaking = isCurrentUser 
+                      ? localVoiceActivity 
+                      : voiceActivity?.isActive || false;
+
+                    return (
+                      <li key={user.id} className="flex items-center gap-3">
+                        <div className="relative">
+                          <Avatar className={cn(
+                            "h-8 w-8 transition-all duration-200",
+                            isSpeaking && "ring-2 ring-green-500 ring-offset-2 ring-offset-background"
+                          )}>
+                            <AvatarFallback>{user.name.substring(0, 2).toUpperCase()}</AvatarFallback>
+                          </Avatar>
+                          <span className={cn(
+                            "absolute bottom-0 right-0 block h-2.5 w-2.5 rounded-full border-2 border-card transition-all duration-200",
+                            isSpeaking ? "bg-green-500 animate-pulse" : "bg-green-500"
+                          )} />
+                        </div>
+                        <span className="font-medium text-sm truncate flex-1">
+                          {user.name} {isCurrentUser ? '(You)' : ''}
+                        </span>
+                        {isSpeaking && (
+                          <div className="flex items-center gap-1">
+                            <div className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse" />
+                            <span className="text-[10px] text-muted-foreground">Speaking</span>
+                          </div>
+                        )}
+                      </li>
+                    );
+                  })}
                    {sessionUsers.length === 0 && (
                      <li className="text-xs text-muted-foreground pl-2">No one here yet.</li>
                    )}
