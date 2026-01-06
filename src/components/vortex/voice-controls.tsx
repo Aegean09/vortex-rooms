@@ -173,7 +173,7 @@ export function VoiceControls({ currentUser }: VoiceControlsProps) {
   const thresholdPercent = rmsToPercent(noiseGateThreshold);
 
   const handleToggleMute = () => {
-    if (!hasMicPermission) {
+    if (!localStream) {
          toast({
           variant: 'destructive',
           title: 'Microphone Not Available',
@@ -237,7 +237,7 @@ export function VoiceControls({ currentUser }: VoiceControlsProps) {
         <div className="flex items-center gap-2">
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant={isMuted ? 'destructive' : 'secondary'} size="icon" onClick={handleToggleMute} disabled={!hasMicPermission}>
+              <Button variant={isMuted ? 'destructive' : 'secondary'} size="icon" onClick={handleToggleMute} disabled={!localStream}>
                 {isMuted ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
               </Button>
             </TooltipTrigger>
