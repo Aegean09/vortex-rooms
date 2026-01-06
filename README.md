@@ -1,8 +1,8 @@
 # 🌀 Vortex Rooms
 
-**Anlık, geçici sesli ve metin sohbet odaları. Kayıt gerektirmez.**
+**Instant, ephemeral voice and text chat rooms. No sign-up required.**
 
-Vortex, WebRTC teknolojisini kullanarak tarayıcı üzerinden gerçek zamanlı peer-to-peer iletişim sağlayan modern bir sohbet uygulamasıdır. Discord benzeri bir deneyimi herhangi bir kurulum gerektirmeden sunar.
+Vortex is a modern chat application that provides real-time peer-to-peer communication directly in the browser using WebRTC technology. It offers a Discord-like experience without requiring any installation.
 
 ![Next.js](https://img.shields.io/badge/Next.js-15.5-black?style=flat-square&logo=next.js)
 ![React](https://img.shields.io/badge/React-19-61DAFB?style=flat-square&logo=react)
@@ -12,60 +12,60 @@ Vortex, WebRTC teknolojisini kullanarak tarayıcı üzerinden gerçek zamanlı p
 
 ---
 
-## ✨ Özellikler
+## ✨ Features
 
-- **🚀 Anında Oda Oluşturma** — Tek tıkla paylaşılabilir link oluşturun
-- **🎤 Gerçek Zamanlı Sesli Sohbet** — WebRTC ile düşük gecikmeli P2P ses iletişimi
-- **💬 Metin Sohbeti** — Odadaki tüm kullanıcılarla anlık mesajlaşma
-- **👥 Kullanıcı Varlığı** — Aktif kullanıcıları gerçek zamanlı görün
-- **🔗 Kolay Katılım** — Link ile veya oda kodu ile anında katılın
-- **🎚️ Ses Kontrolleri** — Mikrofon aç/kapa, ses seviyesi ayarlama
-- **🎨 Modern UI** — Koyu tema, minimalist tasarım
-- **📱 Responsive** — Mobil ve masaüstü uyumlu
+- **🚀 Instant Room Creation** — Create shareable links with one click
+- **🎤 Real-Time Voice Chat** — Low-latency P2P audio communication via WebRTC
+- **💬 Text Chat** — Instant messaging with all users in the room
+- **👥 User Presence** — See active users in real-time
+- **🔗 Easy Joining** — Join instantly via link or room code
+- **🎚️ Audio Controls** — Mute/unmute, adjust audio levels
+- **🎨 Modern UI** — Dark theme, minimalist design
+- **📱 Responsive** — Mobile and desktop compatible
 
 ---
 
-## 🛠️ Teknoloji Stack
+## 🛠️ Technology Stack
 
-| Katman | Teknoloji |
-|--------|-----------|
+| Layer | Technology |
+|-------|-----------|
 | **Frontend** | Next.js 15, React 19, TypeScript |
 | **Styling** | Tailwind CSS, Radix UI, Lucide Icons |
 | **Backend** | Firebase (Firestore, Anonymous Auth) |
 | **Real-time** | WebRTC (P2P), Firebase Realtime Listeners |
-| **AI** | Genkit, Google Generative AI |
+| **Automation** | GitHub Actions (Scheduled cleanup) |
 
 ---
 
-## 🚀 Kurulum
+## 🚀 Installation
 
-### Gereksinimler
+### Requirements
 
 - Node.js 18+ 
-- npm veya pnpm
-- Firebase projesi
+- npm or pnpm
+- Firebase project
 
-### 1. Projeyi Klonlayın
+### 1. Clone the Project
 
 ```bash
 git clone https://github.com/egedurmaz/vortex-rooms.git
 cd vortex-rooms
 ```
 
-### 2. Bağımlılıkları Yükleyin
+### 2. Install Dependencies
 
 ```bash
 npm install
 ```
 
-### 3. Firebase Yapılandırması
+### 3. Firebase Configuration
 
-Firebase Console'da yeni bir proje oluşturun ve aşağıdaki servisleri etkinleştirin:
+Create a new project in Firebase Console and enable the following services:
 
-- **Firestore Database** — Signaling ve mesajlar için
-- **Authentication** — Anonymous auth etkinleştirin
+- **Firestore Database** — For signaling and messages
+- **Authentication** — Enable anonymous auth
 
-`.env.local` dosyası oluşturun:
+Create a `.env.local` file:
 
 ```env
 NEXT_PUBLIC_FIREBASE_API_KEY=your_api_key
@@ -76,62 +76,66 @@ NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=your_sender_id
 NEXT_PUBLIC_FIREBASE_APP_ID=your_app_id
 ```
 
-### 4. Geliştirme Sunucusunu Başlatın
+### 4. Start Development Server
 
 ```bash
 npm run dev
 ```
 
-Uygulama [http://localhost:3000](http://localhost:3000) adresinde çalışacaktır.
+The application will run at [http://localhost:3000](http://localhost:3000).
 
 ---
 
-## 📁 Proje Yapısı
+## 📁 Project Structure
 
 ```
 vortex-rooms/
 ├── src/
 │   ├── app/                    # Next.js App Router
-│   │   ├── page.tsx           # Ana sayfa
-│   │   ├── join/              # Odaya katılma sayfası
-│   │   └── session/[sessionId] # Sohbet odası
-│   │       ├── page.tsx       # Oda arayüzü
-│   │       └── setup/         # Cihaz kurulumu
+│   │   ├── page.tsx           # Home page
+│   │   ├── join/              # Join room page
+│   │   └── session/[sessionId] # Chat room
+│   │       ├── page.tsx       # Room interface
+│   │       └── setup/         # Device setup
 │   ├── components/
-│   │   ├── ui/                # Radix UI bileşenleri
-│   │   └── vortex/            # Uygulama bileşenleri
+│   │   ├── ui/                # Radix UI components
+│   │   └── vortex/            # Application components
 │   │       ├── chat-area.tsx
 │   │       ├── device-setup.tsx
 │   │       ├── user-list.tsx
 │   │       └── voice-controls.tsx
-│   ├── firebase/              # Firebase konfigürasyonu
+│   ├── firebase/              # Firebase configuration
 │   ├── lib/
-│   │   └── webrtc/            # WebRTC implementasyonu
+│   │   └── webrtc/            # WebRTC implementation
 │   │       ├── provider.tsx   # WebRTC Context
-│   │       └── webrtc.ts      # P2P bağlantı fonksiyonları
+│   │       └── webrtc.ts      # P2P connection functions
 │   └── hooks/                 # Custom React hooks
-├── docs/                      # Dokümantasyon
-└── firestore.rules           # Firestore güvenlik kuralları
+├── scripts/                   # Utility scripts
+│   └── cleanup-sessions.js   # Scheduled cleanup script
+├── .github/
+│   └── workflows/            # GitHub Actions workflows
+│       └── cleanup-sessions.yml
+├── docs/                      # Documentation
+└── firestore.rules           # Firestore security rules
 ```
 
 ---
 
-## 🔧 Scriptler
+## 🔧 Scripts
 
-| Komut | Açıklama |
-|-------|----------|
-| `npm run dev` | Geliştirme sunucusunu başlat (Turbopack) |
-| `npm run build` | Prodüksiyon build |
-| `npm run start` | Prodüksiyon sunucusunu başlat |
-| `npm run lint` | ESLint kontrolü |
-| `npm run typecheck` | TypeScript tip kontrolü |
-| `npm run genkit:dev` | Genkit AI geliştirme sunucusu |
+| Command | Description |
+|---------|-------------|
+| `npm run dev` | Start development server (Turbopack) |
+| `npm run build` | Production build |
+| `npm run start` | Start production server |
+| `npm run lint` | ESLint check |
+| `npm run typecheck` | TypeScript type check |
 
 ---
 
-## 🌐 WebRTC Nasıl Çalışır?
+## 🌐 How WebRTC Works
 
-Vortex, Firebase Firestore'u signaling sunucusu olarak kullanarak WebRTC bağlantıları kurar:
+Vortex establishes WebRTC connections using Firebase Firestore as a signaling server:
 
 ```
 ┌─────────┐                        ┌─────────┐
@@ -155,48 +159,52 @@ Vortex, Firebase Firestore'u signaling sunucusu olarak kullanarak WebRTC bağlan
      │     Direct Audio/Video Stream    │
 ```
 
-Daha detaylı bilgi için [WebRTC Deep Dive](./docs/blog-webrtc-deep-dive.md) dökümanına bakın.
+For more detailed information, see the [WebRTC Deep Dive](./docs/blog-webrtc-deep-dive.md) documentation.
 
 ---
 
-## 🎨 Tasarım Sistemi
+## 🎨 Design System
 
-| Renk | Hex | Kullanım |
-|------|-----|----------|
-| **Primary** | `#7DF9FF` | Ana vurgu rengi (Electric Blue) |
-| **Accent** | `#BE95FF` | İkincil vurgu (Light Purple) |
-| **Background** | `#28282B` | Koyu arka plan |
-| **Card** | `rgba(40,40,43,0.8)` | Kart arka planları |
-
----
-
-## 🔒 Güvenlik
-
-- **Anonim Kimlik Doğrulama** — Kullanıcı verisi saklanmaz
-- **Geçici Oturumlar** — Oda verileri oturum sonunda temizlenir
-- **P2P İletişim** — Ses verileri sunucudan geçmez
-- **Firestore Kuralları** — Yetkilendirme bazlı erişim kontrolü
+| Color | Hex | Usage |
+|-------|-----|-------|
+| **Primary** | `#7DF9FF` | Main accent color (Electric Blue) |
+| **Accent** | `#BE95FF` | Secondary accent (Light Purple) |
+| **Background** | `#28282B` | Dark background |
+| **Card** | `rgba(40,40,43,0.8)` | Card backgrounds |
 
 ---
 
-## 🚧 Yol Haritası
+## 🔒 Security
 
-- [ ] Ekran paylaşımı
-- [ ] Alt odalar (Subsessions / Breakout rooms)
-- [ ] Video desteği
-- [ ] Oda şifreleme
-- [ ] Kalıcı sohbet geçmişi (opsiyonel)
-- [ ] TURN sunucu desteği
-
----
-
-## 📄 Lisans
-
-Bu proje MIT lisansı altında lisanslanmıştır.
+- **Anonymous Authentication** — No user data stored
+- **Ephemeral Sessions** — Room data is cleaned up after session ends
+- **P2P Communication** — Audio data doesn't pass through server
+- **Firestore Rules** — Authorization-based access control
+- **Automatic Cleanup** — Old sessions are automatically deleted after 24 hours via GitHub Actions
 
 ---
 
-## 👤 Geliştirici
+## 🚧 Roadmap
+
+- [x] Screen sharing
+- [x] Sub-rooms (Subsessions / Breakout rooms)
+- [ ] Video support
+- [x] Room password protection
+- [ ] Persistent chat history (optional)
+- [ ] TURN server support
+- [x] Push to talk
+- [x] Voice activity indicators
+- [x] Scheduled cleanup of old sessions
+
+---
+
+## 📄 License
+
+This project is licensed under the MIT License.
+
+---
+
+## 👤 Developer
 
 **Ege Durmaz**
 
@@ -205,5 +213,5 @@ Bu proje MIT lisansı altında lisanslanmıştır.
 ---
 
 <p align="center">
-  <sub>WebRTC ile güçlendirilmiştir 🌀</sub>
+  <sub>Powered by WebRTC 🌀</sub>
 </p>
