@@ -227,18 +227,19 @@ export default function SetupPage() {
             </div>
           </div>
 
-          {/* Optional Room Settings */}
-          <Collapsible open={showRoomSettings} onOpenChange={setShowRoomSettings}>
-            <CollapsibleTrigger asChild>
-              <Button variant="ghost" className="w-full justify-between p-2 h-auto">
-                <div className="flex items-center gap-2">
-                  <Settings2 className="h-4 w-4" />
-                  <span className="text-sm font-medium">Room Settings (Optional)</span>
-                </div>
-                {showRoomSettings ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-              </Button>
-            </CollapsibleTrigger>
-            <CollapsibleContent className="space-y-4 pt-2">
+          {/* Optional Room Settings - Only show for new rooms */}
+          {!sessionData && (
+            <Collapsible open={showRoomSettings} onOpenChange={setShowRoomSettings}>
+              <CollapsibleTrigger asChild>
+                <Button variant="ghost" className="w-full justify-between p-2 h-auto">
+                  <div className="flex items-center gap-2">
+                    <Settings2 className="h-4 w-4" />
+                    <span className="text-sm font-medium">Room Settings (Optional)</span>
+                  </div>
+                  {showRoomSettings ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                </Button>
+              </CollapsibleTrigger>
+              <CollapsibleContent className="space-y-4 pt-2">
               <RadioGroup value={roomType} onValueChange={(value) => setRoomType(value as RoomType)}>
                 <div className="flex items-center space-x-2">
                   <RadioGroupItem value="default" id="default" />
@@ -296,8 +297,9 @@ export default function SetupPage() {
                   </div>
                 </div>
               )}
-            </CollapsibleContent>
-          </Collapsible>
+              </CollapsibleContent>
+            </Collapsible>
+          )}
 
           {/* Device Setup (Optional) */}
           <div className="space-y-3 pt-2 border-t">
@@ -360,10 +362,10 @@ export default function SetupPage() {
           <Button
             onClick={handleJoin}
             className="w-full h-12 text-lg font-semibold"
-            disabled={!canJoin}
+            disabled={!canJoin || micPermission !== 'granted'}
           >
             <Sparkles className="mr-2 h-5 w-5" />
-            Join Room
+            {micPermission !== 'granted' ? 'Allow Microphone to Join' : 'Join Room'}
           </Button>
         </CardFooter>
       </Card>

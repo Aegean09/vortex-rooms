@@ -7,10 +7,11 @@ export interface UsePushToTalkParams {
   setIsMuted: (muted: boolean) => void;
   pushToTalkKey: string;
   enabled: boolean;
+  onKeyStateChange?: (isPressing: boolean) => void;
 }
 
 export const usePushToTalk = (params: UsePushToTalkParams) => {
-  const { localStream, isMuted, setIsMuted, pushToTalkKey, enabled } = params;
+  const { localStream, isMuted, setIsMuted, pushToTalkKey, enabled, onKeyStateChange } = params;
   const isPressingKeyRef = useRef(false);
   const wasMutedBeforePushRef = useRef(false);
 
@@ -33,6 +34,7 @@ export const usePushToTalk = (params: UsePushToTalkParams) => {
         toggleMuteTracks(localStream, true);
         setIsMuted(false);
       }
+      onKeyStateChange?.(true);
     }
   }, [localStream, isMuted, pushToTalkKey, enabled, setIsMuted]);
 
@@ -45,16 +47,28 @@ export const usePushToTalk = (params: UsePushToTalkParams) => {
         toggleMuteTracks(localStream, false);
         setIsMuted(wasMutedBeforePushRef.current);
       }
+      onKeyStateChange?.(false);
     }
-  }, [localStream, pushToTalkKey, enabled, setIsMuted]);
+  }, [localStream, pushToTalkKey, enabled, setIsMuted, onKeyStateChange]);
 
   useEffect(() => {
     if (!enabled) {
       // If push to talk is disabled, restore mute state
       if (isPressingKeyRef.current && localStream) {
-        toggleMuteTracks(localStream, false);
+        // Key was pressed, restore previous state
+        toggleMuteTracks(localStream, !wasMutedBeforePushRef.current);
         setIsMuted(wasMutedBeforePushRef.current);
         isPressingKeyRef.current = false;
+        onKeyStateChange?.(false);
+      } else if (localStream) {
+        // Push to talk was just disabled, restore tracks to match mute state
+        // If user wasn't muted before PTT, ensure tracks are enabled
+        if (!wasMutedBeforePushRef.current) {
+          toggleMuteTracks(localStream, true);
+        } else {
+          // User was muted, keep tracks disabled
+          toggleMuteTracks(localStream, false);
+        }
       }
       return;
     }

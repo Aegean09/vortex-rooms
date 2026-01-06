@@ -18,6 +18,8 @@ export const useRemoteVoiceActivity = (params: UseRemoteVoiceActivityParams): Re
   const [voiceActivity, setVoiceActivity] = useState<RemoteVoiceActivity>({});
   const analysersRef = useRef<Record<string, { analyser: AnalyserNode; audioContext: AudioContext; source: MediaStreamAudioSourceNode }>>({});
   const animationFrameRef = useRef<number>();
+  const consecutiveActiveFramesRef = useRef<Record<string, number>>({});
+  const consecutiveInactiveFramesRef = useRef<Record<string, number>>({});
 
   useEffect(() => {
     // Cleanup old analysers for streams that no longer exist
@@ -39,14 +41,17 @@ export const useRemoteVoiceActivity = (params: UseRemoteVoiceActivityParams): Re
         const source = audioContext.createMediaStreamSource(stream);
         const analyser = audioContext.createAnalyser();
         analyser.fftSize = 256;
-        analyser.smoothingTimeConstant = 0.3;
+        analyser.smoothingTimeConstant = 0.8; // Increased for smoother detection
         source.connect(analyser);
 
         analysersRef.current[peerId] = { analyser, audioContext, source };
       }
     });
 
-    // Voice activity detection loop
+    // Voice activity detection loop with debouncing
+    const ACTIVATION_FRAMES = 3; // Need 3 frames to activate
+    const DEACTIVATION_FRAMES = 8; // Need 8 frames to deactivate
+    
     const checkVoiceActivity = () => {
       const newActivity: RemoteVoiceActivity = {};
 
@@ -55,8 +60,30 @@ export const useRemoteVoiceActivity = (params: UseRemoteVoiceActivityParams): Re
         analyser.getByteFrequencyData(dataArray);
 
         const rms = calculateRMS(dataArray);
+        const isAboveThreshold = rms > threshold;
+        
+        // Initialize counters if needed
+        if (!consecutiveActiveFramesRef.current[peerId]) {
+          consecutiveActiveFramesRef.current[peerId] = 0;
+        }
+        if (!consecutiveInactiveFramesRef.current[peerId]) {
+          consecutiveInactiveFramesRef.current[peerId] = 0;
+        }
+        
+        if (isAboveThreshold) {
+          consecutiveActiveFramesRef.current[peerId]++;
+          consecutiveInactiveFramesRef.current[peerId] = 0;
+        } else {
+          consecutiveInactiveFramesRef.current[peerId]++;
+          consecutiveActiveFramesRef.current[peerId] = 0;
+        }
+        
+        // Determine active state based on consecutive frames
+        const isActive = consecutiveActiveFramesRef.current[peerId] >= ACTIVATION_FRAMES ||
+          (voiceActivity[peerId]?.isActive && consecutiveInactiveFramesRef.current[peerId] < DEACTIVATION_FRAMES);
+        
         newActivity[peerId] = {
-          isActive: rms > threshold,
+          isActive,
           level: rms,
         };
       });
@@ -81,6 +108,8 @@ export const useRemoteVoiceActivity = (params: UseRemoteVoiceActivityParams): Re
         }
       });
       analysersRef.current = {};
+      consecutiveActiveFramesRef.current = {};
+      consecutiveInactiveFramesRef.current = {};
     };
   }, [remoteStreams, threshold]);
 
