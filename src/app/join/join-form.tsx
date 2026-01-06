@@ -22,7 +22,6 @@ export default function JoinForm() {
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [requiresPassword, setRequiresPassword] = useState(false);
-  const [roomName, setRoomName] = useState<string | null>(null);
   const { toast } = useToast();
 
   const auth = useAuth();
@@ -55,7 +54,6 @@ export default function JoinForm() {
         // Check if room requires password
         if (sessionData.password && !requiresPassword) {
           setRequiresPassword(true);
-          setRoomName(sessionData.name || null);
           setIsLoading(false);
           return;
         }
@@ -120,8 +118,8 @@ export default function JoinForm() {
         <CardHeader className="text-center pt-12 sm:pt-6">
           <CardTitle className="text-3xl font-bold">Join a Room</CardTitle>
           <CardDescription className="text-muted-foreground pt-2">
-            {requiresPassword && roomName 
-              ? `This room "${roomName}" is password protected.`
+            {requiresPassword 
+              ? 'This room is password protected.'
               : 'Enter the 5-character Session ID to join an existing room.'}
           </CardDescription>
         </CardHeader>
@@ -173,7 +171,6 @@ export default function JoinForm() {
                     onClick={() => {
                       setRequiresPassword(false);
                       setPassword('');
-                      setRoomName(null);
                     }}
                     disabled={isLoading}
                   >

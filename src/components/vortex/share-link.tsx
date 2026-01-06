@@ -6,7 +6,7 @@ import { useParams } from 'next/navigation';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Copy, Link as LinkIcon, Lock, Users, Hash } from 'lucide-react';
+import { Copy, Link as LinkIcon, Lock, Users } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { useFirestore, useMemoFirebase, useDoc } from '@/firebase';
 import { doc } from 'firebase/firestore';
@@ -44,12 +44,6 @@ export function ShareLink() {
           <p className="text-sm font-medium text-foreground">Share this room</p>
           {sessionData && (
             <div className="flex items-center gap-2">
-              {sessionData.name && (
-                <Badge variant="outline" className="text-xs">
-                  <Hash className="h-3 w-3 mr-1" />
-                  {sessionData.name}
-                </Badge>
-              )}
               {sessionData.password && (
                 <Badge variant="outline" className="text-xs">
                   <Lock className="h-3 w-3 mr-1" />
