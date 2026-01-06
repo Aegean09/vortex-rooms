@@ -127,23 +127,23 @@ export default function JoinForm() {
           <form onSubmit={handleJoin} className="flex flex-col gap-4">
             {!requiresPassword ? (
               <>
-                <Input
-                  value={sessionId}
-                  onChange={(e) => setSessionId(e.target.value)}
-                  placeholder="e.g. f1HtW"
-                  maxLength={5}
-                  className="text-center text-lg tracking-[0.5em] h-12"
-                  autoComplete="off"
-                />
-                <Button
-                  type="submit"
-                  className="w-full h-12 text-lg font-semibold"
-                  size="lg"
-                  disabled={isLoading || isUserLoading || !authUser || !sessionId.trim()}
-                >
-                  <LogIn className="mr-2 h-5 w-5" />
-                  {isLoading ? 'Verifying...' : 'Join'}
-                </Button>
+            <Input
+              value={sessionId}
+              onChange={(e) => setSessionId(e.target.value)}
+              placeholder="e.g. f1HtW"
+              maxLength={5}
+              className="text-center text-lg tracking-[0.5em] h-12"
+              autoComplete="off"
+            />
+            <Button
+              type="submit"
+              className="w-full h-12 text-lg font-semibold"
+              size="lg"
+              disabled={isLoading || isUserLoading || !authUser || !sessionId.trim()}
+            >
+              <LogIn className="mr-2 h-5 w-5" />
+              {isLoading ? 'Verifying...' : 'Join'}
+            </Button>
               </>
             ) : (
               <>

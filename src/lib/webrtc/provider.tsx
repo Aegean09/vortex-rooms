@@ -86,6 +86,7 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
   const [pushToTalk, setPushToTalk] = useState<boolean>(false);
   const [pushToTalkKey, setPushToTalkKey] = useState<string>('Space'); // Default: Space key
   const [isPressingPushToTalkKey, setIsPressingPushToTalkKey] = useState<boolean>(false);
+  const prevPushToTalkRef = useRef(false);
 
   // Remote voice activity detection
   const remoteVoiceActivity = useRemoteVoiceActivity({
@@ -183,21 +184,22 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
   });
 
   // When push to talk is disabled, ensure mute state matches tracks
+  // Only sync when pushToTalk changes from enabled to disabled
   useEffect(() => {
-    if (!pushToTalk && localStream) {
+    if (prevPushToTalkRef.current && !pushToTalk && localStream) {
+      // Push to talk was just disabled, sync mute state with tracks
       const audioTracks = localStream.getAudioTracks();
       if (audioTracks.length > 0) {
-        const tracksMuted = audioTracks[0].enabled === false;
-        // Sync mute state with track state
-        if (tracksMuted !== isMuted) {
-          setIsMuted(tracksMuted);
-        }
+        const tracksEnabled = audioTracks[0].enabled;
+        const tracksMuted = !tracksEnabled;
+        setIsMuted(tracksMuted);
       }
     }
-  }, [pushToTalk, localStream, isMuted, setIsMuted]);
+    prevPushToTalkRef.current = pushToTalk;
+  }, [pushToTalk, localStream, setIsMuted]);
 
   const toggleMute = useCallback(() => {
-    if (localStream && !pushToTalk) {
+    if (localStream) {
       const newMutedState = !isMuted;
       toggleMuteTracks(localStream, !newMutedState);
       setIsMuted(newMutedState);
@@ -205,7 +207,7 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
         setIsDeafened(false);
       }
     }
-  }, [localStream, isMuted, isDeafened, pushToTalk]);
+  }, [localStream, isMuted, isDeafened]);
 
   const toggleDeafen = useCallback(() => {
     const newDeafenedState = !isDeafened;

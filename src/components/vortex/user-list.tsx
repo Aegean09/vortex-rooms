@@ -5,6 +5,7 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Card, CardContent } from '@/components/ui/card';
 import { useWebRTC } from '@/lib/webrtc/provider';
 import { cn } from '@/lib/utils';
+import { MicOff, HeadphoneOff } from 'lucide-react';
 
 export interface User {
   id: string;
@@ -44,28 +45,37 @@ export function UserList({ users, currentUser }: UserListProps) {
                 <div className="relative">
                   <Avatar className={cn(
                     "transition-all duration-200",
-                    isSpeaking && "ring-2 ring-green-500 ring-offset-2 ring-offset-background",
-                    userIsMuted && "ring-2 ring-red-500 ring-offset-2 ring-offset-background"
+                    isSpeaking && !userIsMuted && !userIsDeafened && "ring-2 ring-green-500 ring-offset-2 ring-offset-background",
+                    userIsMuted && "ring-2 ring-red-500 ring-offset-2 ring-offset-background",
+                    userIsDeafened && "ring-2 ring-orange-500 ring-offset-2 ring-offset-background"
                   )}>
                     <AvatarFallback>{user.name.substring(0, 2).toUpperCase()}</AvatarFallback>
                   </Avatar>
                   <span className={cn(
                     "absolute bottom-0 right-0 block h-3 w-3 rounded-full border-2 border-card transition-all duration-200",
-                    isSpeaking ? "bg-green-500 animate-pulse" : userIsMuted ? "bg-red-500" : "bg-green-500"
+                    isSpeaking && !userIsMuted && !userIsDeafened ? "bg-green-500 animate-pulse" : 
+                    userIsMuted ? "bg-red-500" : 
+                    userIsDeafened ? "bg-orange-500" : 
+                    "bg-green-500"
                   )} />
                 </div>
                 <span className="font-medium text-sm truncate flex-1">
                   {user.name} {isCurrentUser ? '(You)' : ''}
                 </span>
-                {isSpeaking && !userIsMuted && (
+                {isSpeaking && !userIsMuted && !userIsDeafened && (
                   <div className="ml-auto flex items-center gap-1">
                     <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
                     <span className="text-xs text-muted-foreground">Speaking</span>
                   </div>
                 )}
-                {userIsMuted && (
+                {userIsMuted && !userIsDeafened && (
                   <div className="ml-auto flex items-center gap-1">
-                    <span className="text-xs text-red-400 font-medium">Muted</span>
+                    <MicOff className="h-4 w-4 text-red-400" />
+                  </div>
+                )}
+                {userIsDeafened && (
+                  <div className="ml-auto flex items-center gap-1">
+                    <HeadphoneOff className="h-4 w-4 text-orange-400" />
                   </div>
                 )}
               </li>

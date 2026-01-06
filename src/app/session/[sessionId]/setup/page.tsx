@@ -35,6 +35,7 @@ export default function SetupPage() {
   const [micPermission, setMicPermission] = useState<'prompt' | 'granted' | 'denied'>('prompt');
   const [volume, setVolume] = useState(0);
   const [skipDeviceSetup, setSkipDeviceSetup] = useState(false);
+  const [isJoining, setIsJoining] = useState(false);
   const { toast } = useToast();
   
   // Audio refs
@@ -125,7 +126,9 @@ export default function SetupPage() {
   }, [cleanupAudio]);
 
   const handleJoin = async () => {
-    if (!nameInput.trim() || !firestore || !authUser || !sessionId) return;
+    if (!nameInput.trim() || !firestore || !authUser || !sessionId || isJoining) return;
+    
+    setIsJoining(true);
     
     // Check max users limit if room already exists
     const existingMaxUsers = sessionData?.maxUsers;
@@ -137,6 +140,7 @@ export default function SetupPage() {
         title: 'Room Full',
         description: `This room has reached its maximum capacity of ${existingMaxUsers} users.`,
       });
+      setIsJoining(false);
       router.push('/');
       return;
     }
@@ -172,15 +176,21 @@ export default function SetupPage() {
     
     setDocumentNonBlocking(sessionDocRef, newSessionData, { merge: true });
     sessionStorage.setItem(`vortex-setup-complete-${sessionId}`, 'true');
-    router.push(`/session/${sessionId}`);
+    
+    // Small delay to show loader before navigation
+    setTimeout(() => {
+      router.push(`/session/${sessionId}`);
+    }, 100);
   };
 
-  if (isUserLoading || !authUser) {
+  if (isUserLoading || !authUser || isJoining) {
     return (
       <div className="flex h-screen w-full items-center justify-center bg-background">
         <div className="flex flex-col items-center gap-4">
           <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-primary"></div>
-          <p className="text-lg text-muted-foreground">Preparing Setup...</p>
+          <p className="text-lg text-muted-foreground">
+            {isJoining ? 'Joining Room...' : 'Preparing Setup...'}
+          </p>
         </div>
       </div>
     );
@@ -362,10 +372,19 @@ export default function SetupPage() {
           <Button
             onClick={handleJoin}
             className="w-full h-12 text-lg font-semibold"
-            disabled={!canJoin || micPermission !== 'granted'}
+            disabled={!canJoin || micPermission !== 'granted' || isJoining}
           >
-            <Sparkles className="mr-2 h-5 w-5" />
-            {micPermission !== 'granted' ? 'Allow Microphone to Join' : 'Join Room'}
+            {isJoining ? (
+              <>
+                <div className="animate-spin rounded-full h-5 w-5 border-t-2 border-b-2 border-current mr-2"></div>
+                Joining Room...
+              </>
+            ) : (
+              <>
+                <Sparkles className="mr-2 h-5 w-5" />
+                {micPermission !== 'granted' ? 'Allow Microphone to Join' : 'Join Room'}
+              </>
+            )}
           </Button>
         </CardFooter>
       </Card>

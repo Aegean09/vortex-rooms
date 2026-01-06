@@ -29,10 +29,9 @@ export const usePushToTalk = (params: UsePushToTalkParams) => {
       isPressingKeyRef.current = true;
       wasMutedBeforePushRef.current = isMuted;
       
-      // Unmute when key is pressed
+      // Unmute tracks when key is pressed (override mute state temporarily)
       if (localStream) {
         toggleMuteTracks(localStream, true);
-        setIsMuted(false);
       }
       onKeyStateChange?.(true);
     }
@@ -44,12 +43,11 @@ export const usePushToTalk = (params: UsePushToTalkParams) => {
       
       // Mute when key is released (restore previous state)
       if (localStream) {
-        toggleMuteTracks(localStream, false);
-        setIsMuted(wasMutedBeforePushRef.current);
+        toggleMuteTracks(localStream, !wasMutedBeforePushRef.current);
       }
       onKeyStateChange?.(false);
     }
-  }, [localStream, pushToTalkKey, enabled, setIsMuted, onKeyStateChange]);
+  }, [localStream, pushToTalkKey, enabled, onKeyStateChange]);
 
   useEffect(() => {
     if (!enabled) {
