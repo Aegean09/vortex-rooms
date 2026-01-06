@@ -20,7 +20,7 @@ interface UserListProps {
 }
 
 export function UserList({ users, currentUser }: UserListProps) {
-  const { remoteVoiceActivity, localVoiceActivity } = useWebRTC();
+  const { remoteVoiceActivity, localVoiceActivity, isMuted, isDeafened } = useWebRTC();
 
   return (
     <Card className="w-full max-w-xs h-full flex flex-col bg-transparent shadow-none border-none">
@@ -34,28 +34,38 @@ export function UserList({ users, currentUser }: UserListProps) {
             const isSpeaking = isCurrentUser 
               ? localVoiceActivity 
               : voiceActivity?.isActive || false;
+            
+            // Check mute/deafen status
+            const userIsMuted = isCurrentUser ? isMuted : user.isMuted || false;
+            const userIsDeafened = isCurrentUser ? isDeafened : false; // Deafened is only local
 
             return (
               <li key={user.id} className="flex items-center gap-3">
                 <div className="relative">
                   <Avatar className={cn(
                     "transition-all duration-200",
-                    isSpeaking && "ring-2 ring-green-500 ring-offset-2 ring-offset-background"
+                    isSpeaking && "ring-2 ring-green-500 ring-offset-2 ring-offset-background",
+                    userIsMuted && "ring-2 ring-red-500 ring-offset-2 ring-offset-background"
                   )}>
                     <AvatarFallback>{user.name.substring(0, 2).toUpperCase()}</AvatarFallback>
                   </Avatar>
                   <span className={cn(
                     "absolute bottom-0 right-0 block h-3 w-3 rounded-full border-2 border-card transition-all duration-200",
-                    isSpeaking ? "bg-green-500 animate-pulse" : "bg-green-500"
+                    isSpeaking ? "bg-green-500 animate-pulse" : userIsMuted ? "bg-red-500" : "bg-green-500"
                   )} />
                 </div>
-                <span className="font-medium text-sm truncate">
+                <span className="font-medium text-sm truncate flex-1">
                   {user.name} {isCurrentUser ? '(You)' : ''}
                 </span>
-                {isSpeaking && (
+                {isSpeaking && !userIsMuted && (
                   <div className="ml-auto flex items-center gap-1">
                     <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
                     <span className="text-xs text-muted-foreground">Speaking</span>
+                  </div>
+                )}
+                {userIsMuted && (
+                  <div className="ml-auto flex items-center gap-1">
+                    <span className="text-xs text-red-400 font-medium">Muted</span>
                   </div>
                 )}
               </li>

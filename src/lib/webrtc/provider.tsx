@@ -85,6 +85,7 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
   const [noiseGateThreshold, setNoiseGateThreshold] = useState<number>(0.126); // Default threshold %70 (RMS value)
   const [pushToTalk, setPushToTalk] = useState<boolean>(false);
   const [pushToTalkKey, setPushToTalkKey] = useState<string>('Space'); // Default: Space key
+  const [isPressingPushToTalkKey, setIsPressingPushToTalkKey] = useState<boolean>(false);
 
   // Remote voice activity detection
   const remoteVoiceActivity = useRemoteVoiceActivity({
@@ -92,12 +93,15 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
     threshold: noiseGateThreshold,
   });
 
-  // Local voice activity detection
-  const localVoiceActivity = useLocalVoiceActivity({
+  // Local voice activity detection - only show if not using push to talk or key is pressed
+  const rawLocalVoiceActivity = useLocalVoiceActivity({
     rawStream,
     isMuted,
     threshold: noiseGateThreshold,
   });
+  
+  // Filter out voice activity when push to talk is enabled but key is not pressed
+  const localVoiceActivity = pushToTalk && !isPressingPushToTalkKey ? false : rawLocalVoiceActivity;
   
   // Refs for noise gate processing
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -175,7 +179,22 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
     setIsMuted,
     pushToTalkKey,
     enabled: pushToTalk,
+    onKeyStateChange: setIsPressingPushToTalkKey,
   });
+
+  // When push to talk is disabled, ensure mute state matches tracks
+  useEffect(() => {
+    if (!pushToTalk && localStream) {
+      const audioTracks = localStream.getAudioTracks();
+      if (audioTracks.length > 0) {
+        const tracksMuted = audioTracks[0].enabled === false;
+        // Sync mute state with track state
+        if (tracksMuted !== isMuted) {
+          setIsMuted(tracksMuted);
+        }
+      }
+    }
+  }, [pushToTalk, localStream, isMuted, setIsMuted]);
 
   const toggleMute = useCallback(() => {
     if (localStream && !pushToTalk) {
