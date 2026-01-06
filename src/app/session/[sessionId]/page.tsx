@@ -293,7 +293,7 @@ export default function SessionPage() {
     }
 
     const userDocRef = doc(firestore, 'sessions', sessionId, 'users', authUser.uid);
-    setDoc(userDocRef, { id: authUser.uid, name: username, sessionId, subSessionId: 'general', isScreenSharing: false }, { merge: true });
+    setDoc(userDocRef, { id: authUser.uid, name: username, sessionId, subSessionId: 'general', isScreenSharing: false, isMuted: false }, { merge: true });
 
     window.addEventListener('beforeunload', handleLeave);
 
