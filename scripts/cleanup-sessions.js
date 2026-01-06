@@ -35,66 +35,74 @@ async function cleanupOldSessions() {
   console.log(`Current time: ${now.toDate()}`);
 
   try {
-    // First, try to query sessions with createdAt field (more efficient)
-    let oldSessions = [];
-    
-    try {
-      const oldSessionsQuery = await db
-        .collection('sessions')
-        .where('createdAt', '<', twentyFourHoursAgo)
-        .get();
-      
-      oldSessions = oldSessionsQuery.docs;
-      console.log(`Found ${oldSessions.length} sessions with createdAt < 24 hours via query`);
-    } catch (queryError) {
-      console.log('Query with createdAt failed, will check all sessions:', queryError.message);
-    }
-    
-    // Also get all sessions to check for ones without createdAt or with issues
+    // Get ALL sessions - don't rely on query, check manually
     const allSessionsSnapshot = await db.collection('sessions').get();
     console.log(`Total sessions in database: ${allSessionsSnapshot.size}`);
 
-    // Create a Set of already found session IDs
-    const foundSessionIds = new Set(oldSessions.map(doc => doc.id));
-
-    // Check all sessions for edge cases (missing createdAt, using lastActive, etc.)
+    const oldSessions = [];
+    
+    // Check each session manually
     for (const sessionDoc of allSessionsSnapshot.docs) {
-      // Skip if already in oldSessions
-      if (foundSessionIds.has(sessionDoc.id)) {
-        continue;
-      }
-      
+      const sessionId = sessionDoc.id;
       const data = sessionDoc.data();
       const createdAt = data.createdAt;
       const lastActive = data.lastActive;
       
-      // Check if createdAt exists but is a serverTimestamp placeholder (null)
-      if (createdAt === null || createdAt === undefined) {
-        // Use lastActive if available
-        if (lastActive && lastActive.toDate) {
-          if (lastActive.seconds < twentyFourHoursAgo.seconds) {
-            const sessionDate = lastActive.toDate();
-            console.log(`Session ${sessionDoc.id} is old (lastActive: ${sessionDate}, no createdAt)`);
-            oldSessions.push(sessionDoc);
-            foundSessionIds.add(sessionDoc.id);
-          }
+      // Debug: Log session info
+      console.log(`\nChecking session ${sessionId}:`);
+      console.log(`  - createdAt:`, createdAt ? (createdAt.toDate ? createdAt.toDate() : createdAt) : 'MISSING');
+      console.log(`  - lastActive:`, lastActive ? (lastActive.toDate ? lastActive.toDate() : lastActive) : 'MISSING');
+      
+      // Determine which timestamp to use
+      let sessionTime = null;
+      let timeSource = '';
+      
+      if (createdAt) {
+        // Check if it's a Firestore Timestamp
+        if (createdAt.toDate && typeof createdAt.toDate === 'function') {
+          sessionTime = createdAt;
+          timeSource = 'createdAt';
+        } else if (createdAt.seconds) {
+          // It's already a Timestamp object
+          sessionTime = createdAt;
+          timeSource = 'createdAt';
         } else {
-          // No timestamp at all - consider it old (legacy session)
-          console.log(`Session ${sessionDoc.id} has no timestamp fields - marking for deletion`);
-          oldSessions.push(sessionDoc);
-          foundSessionIds.add(sessionDoc.id);
+          console.log(`  ⚠️  createdAt exists but is not a valid Timestamp:`, typeof createdAt);
         }
+      }
+      
+      // Fallback to lastActive if createdAt is not valid
+      if (!sessionTime && lastActive) {
+        if (lastActive.toDate && typeof lastActive.toDate === 'function') {
+          sessionTime = lastActive;
+          timeSource = 'lastActive';
+        } else if (lastActive.seconds) {
+          sessionTime = lastActive;
+          timeSource = 'lastActive';
+        }
+      }
+      
+      // If no valid timestamp, consider it old (legacy session)
+      if (!sessionTime) {
+        console.log(`  ❌ No valid timestamp - marking for deletion`);
+        oldSessions.push(sessionDoc);
         continue;
       }
       
-      // If createdAt exists but query didn't catch it, check manually
-      if (createdAt && createdAt.toDate) {
-        if (createdAt.seconds < twentyFourHoursAgo.seconds) {
-          const sessionDate = createdAt.toDate();
-          console.log(`Session ${sessionDoc.id} is old (createdAt: ${sessionDate}) - query missed it`);
-          oldSessions.push(sessionDoc);
-          foundSessionIds.add(sessionDoc.id);
-        }
+      // Check if older than 24 hours
+      const sessionDate = sessionTime.toDate ? sessionTime.toDate() : new Date(sessionTime.seconds * 1000);
+      const sessionSeconds = sessionTime.seconds || Math.floor(sessionDate.getTime() / 1000);
+      
+      console.log(`  - Using ${timeSource}: ${sessionDate}`);
+      const ageMinutes = Math.floor((now.seconds - sessionSeconds) / 60);
+      const ageHours = Math.floor(ageMinutes / 60);
+      console.log(`  - Session age: ${ageHours} hours (${ageMinutes} minutes)`);
+      
+      if (sessionSeconds < twentyFourHoursAgo.seconds) {
+        console.log(`  ✅ Session is OLD (${ageHours} hours old) - marking for deletion`);
+        oldSessions.push(sessionDoc);
+      } else {
+        console.log(`  ⏭️  Session is recent (${ageHours} hours old) - skipping`);
       }
     }
 
