@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Sparkles, LogIn } from 'lucide-react';
 import { useAuth, useFirestore, useUser } from '@/firebase';
 import { initiateAnonymousSignIn } from '@/firebase/non-blocking-login';
-import { CreateRoomDialog } from '@/components/vortex/create-room-dialog';
+import { nanoid } from 'nanoid';
 
 export default function HomePage() {
   const router = useRouter();
@@ -23,6 +23,12 @@ export default function HomePage() {
     }
   }, [authUser, isUserLoading, auth]);
 
+
+  const createRoom = () => {
+    if (!authUser) return;
+    const newSessionId = nanoid(5);
+    router.push(`/session/${newSessionId}/setup`);
+  };
 
   const joinRoom = () => {
     router.push('/join');
@@ -46,16 +52,15 @@ export default function HomePage() {
         </CardHeader>
         <CardContent>
           <div className="flex flex-col gap-4">
-            <CreateRoomDialog disabled={isUserLoading || !authUser}>
-              <Button
-                className="w-full h-12 text-lg font-semibold"
-                size="lg"
-                disabled={isUserLoading || !authUser}
-              >
-                <Sparkles className="mr-2 h-5 w-5" />
-                {isUserLoading ? 'Connecting...' : 'Create a New Room'}
-              </Button>
-            </CreateRoomDialog>
+            <Button
+              onClick={createRoom}
+              className="w-full h-12 text-lg font-semibold"
+              size="lg"
+              disabled={isUserLoading || !authUser}
+            >
+              <Sparkles className="mr-2 h-5 w-5" />
+              {isUserLoading ? 'Connecting...' : 'Create a New Room'}
+            </Button>
             <Button
               onClick={joinRoom}
               className="w-full h-12 text-lg font-semibold"
