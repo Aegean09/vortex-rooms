@@ -32,20 +32,78 @@ async function cleanupOldSessions() {
   );
 
   console.log(`Starting cleanup of sessions older than ${twentyFourHoursAgo.toDate()}`);
+  console.log(`Current time: ${now.toDate()}`);
 
   try {
-    // Query sessions where createdAt is older than 24 hours
-    const oldSessionsQuery = await db
-      .collection('sessions')
-      .where('createdAt', '<', twentyFourHoursAgo)
-      .get();
+    // First, try to query sessions with createdAt field (more efficient)
+    let oldSessions = [];
+    
+    try {
+      const oldSessionsQuery = await db
+        .collection('sessions')
+        .where('createdAt', '<', twentyFourHoursAgo)
+        .get();
+      
+      oldSessions = oldSessionsQuery.docs;
+      console.log(`Found ${oldSessions.length} sessions with createdAt < 24 hours via query`);
+    } catch (queryError) {
+      console.log('Query with createdAt failed, will check all sessions:', queryError.message);
+    }
+    
+    // Also get all sessions to check for ones without createdAt or with issues
+    const allSessionsSnapshot = await db.collection('sessions').get();
+    console.log(`Total sessions in database: ${allSessionsSnapshot.size}`);
 
-    if (oldSessionsQuery.empty) {
+    // Create a Set of already found session IDs
+    const foundSessionIds = new Set(oldSessions.map(doc => doc.id));
+
+    // Check all sessions for edge cases (missing createdAt, using lastActive, etc.)
+    for (const sessionDoc of allSessionsSnapshot.docs) {
+      // Skip if already in oldSessions
+      if (foundSessionIds.has(sessionDoc.id)) {
+        continue;
+      }
+      
+      const data = sessionDoc.data();
+      const createdAt = data.createdAt;
+      const lastActive = data.lastActive;
+      
+      // Check if createdAt exists but is a serverTimestamp placeholder (null)
+      if (createdAt === null || createdAt === undefined) {
+        // Use lastActive if available
+        if (lastActive && lastActive.toDate) {
+          if (lastActive.seconds < twentyFourHoursAgo.seconds) {
+            const sessionDate = lastActive.toDate();
+            console.log(`Session ${sessionDoc.id} is old (lastActive: ${sessionDate}, no createdAt)`);
+            oldSessions.push(sessionDoc);
+            foundSessionIds.add(sessionDoc.id);
+          }
+        } else {
+          // No timestamp at all - consider it old (legacy session)
+          console.log(`Session ${sessionDoc.id} has no timestamp fields - marking for deletion`);
+          oldSessions.push(sessionDoc);
+          foundSessionIds.add(sessionDoc.id);
+        }
+        continue;
+      }
+      
+      // If createdAt exists but query didn't catch it, check manually
+      if (createdAt && createdAt.toDate) {
+        if (createdAt.seconds < twentyFourHoursAgo.seconds) {
+          const sessionDate = createdAt.toDate();
+          console.log(`Session ${sessionDoc.id} is old (createdAt: ${sessionDate}) - query missed it`);
+          oldSessions.push(sessionDoc);
+          foundSessionIds.add(sessionDoc.id);
+        }
+      }
+    }
+
+    if (oldSessions.length === 0) {
       console.log('No old sessions found to delete');
       return;
     }
 
-    console.log(`Found ${oldSessionsQuery.size} old sessions to delete`);
+    console.log(`Found ${oldSessions.length} old sessions to delete`);
 
     let deletedCount = 0;
     const BATCH_SIZE = 500; // Firestore batch limit
@@ -86,23 +144,33 @@ async function cleanupOldSessions() {
     };
 
     // Process sessions
-    for (const sessionDoc of oldSessionsQuery.docs) {
+    for (const sessionDoc of oldSessions) {
       const sessionId = sessionDoc.id;
+      const data = sessionDoc.data();
       
-      // Delete subcollections: users, messages, subsessions
-      const subcollections = ['users', 'messages', 'subsessions'];
+      console.log(`Processing session ${sessionId}...`);
       
-      for (const subcollectionName of subcollections) {
-        await deleteSubcollection(sessionId, subcollectionName);
-      }
-      
-      // Delete the session document itself
-      await sessionDoc.ref.delete();
-      deletedCount++;
-      
-      // Log progress every 10 sessions
-      if (deletedCount % 10 === 0) {
-        console.log(`Deleted ${deletedCount} sessions so far...`);
+      try {
+        // Delete subcollections: users, messages, subsessions
+        const subcollections = ['users', 'messages', 'subsessions'];
+        
+        for (const subcollectionName of subcollections) {
+          await deleteSubcollection(sessionId, subcollectionName);
+        }
+        
+        // Delete the session document itself
+        await sessionDoc.ref.delete();
+        deletedCount++;
+        
+        console.log(`✅ Deleted session ${sessionId}`);
+        
+        // Log progress every 10 sessions
+        if (deletedCount % 10 === 0) {
+          console.log(`Progress: Deleted ${deletedCount}/${oldSessions.length} sessions...`);
+        }
+      } catch (error) {
+        console.error(`❌ Error deleting session ${sessionId}:`, error);
+        // Continue with next session
       }
     }
     
