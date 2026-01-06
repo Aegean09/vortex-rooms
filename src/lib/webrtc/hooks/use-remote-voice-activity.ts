@@ -55,7 +55,15 @@ export const useRemoteVoiceActivity = (params: UseRemoteVoiceActivityParams): Re
     const checkVoiceActivity = () => {
       const newActivity: RemoteVoiceActivity = {};
 
-      Object.entries(analysersRef.current).forEach(([peerId, { analyser }]) => {
+      Object.entries(analysersRef.current).forEach(([peerId, { analyser, audioContext }]) => {
+        // Resume AudioContext if suspended (happens when tab goes to background)
+        if (audioContext && audioContext.state === 'suspended') {
+          audioContext.resume().catch(console.error);
+        }
+        
+        if (audioContext?.state !== 'running') {
+          return;
+        }
         const dataArray = new Uint8Array(analyser.frequencyBinCount);
         analyser.getByteFrequencyData(dataArray);
 

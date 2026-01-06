@@ -73,11 +73,52 @@ export const createPeerConnection = (
     onTrack(event.track, trackType);
   };
 
+  // Monitor connection state and recover from disconnections
   pc.onconnectionstatechange = () => {
-    console.log(`Peer ${remotePeerId} connection state: ${pc.connectionState}`);
-    if (pc.connectionState === 'disconnected' || pc.connectionState === 'closed' || pc.connectionState === 'failed') {
+    console.log(`Peer connection ${callId} state: ${pc.connectionState}`);
+    
+    // Only cleanup on closed/failed, not on disconnected (which might recover)
+    if (pc.connectionState === 'closed' || pc.connectionState === 'failed') {
       console.log(`Peer connection with ${remotePeerId} state: ${pc.connectionState}. Cleaning up.`);
       onDisconnect();
+      return;
+    }
+    
+    // If connection disconnects, try to recover
+    if (pc.connectionState === 'disconnected') {
+      console.warn(`Peer connection ${callId} is disconnected, attempting recovery...`);
+      
+      // Try restarting ICE after a short delay
+      setTimeout(() => {
+        if (pc.connectionState === 'disconnected') {
+          try {
+            pc.restartIce();
+            console.log(`Restarted ICE for ${callId}`);
+          } catch (e) {
+            console.error(`Error restarting ICE for ${callId}:`, e);
+          }
+        }
+      }, 2000);
+    }
+  };
+
+  pc.oniceconnectionstatechange = () => {
+    console.log(`ICE connection state for ${callId}: ${pc.iceConnectionState}`);
+    
+    // If ICE connection fails, try to recover
+    if (pc.iceConnectionState === 'disconnected' || pc.iceConnectionState === 'failed') {
+      console.warn(`ICE connection ${callId} is ${pc.iceConnectionState}, attempting recovery...`);
+      
+      setTimeout(() => {
+        if (pc.iceConnectionState === 'disconnected' || pc.iceConnectionState === 'failed') {
+          try {
+            pc.restartIce();
+            console.log(`Restarted ICE for ${callId} due to ICE state`);
+          } catch (e) {
+            console.error(`Error restarting ICE for ${callId}:`, e);
+          }
+        }
+      }, 2000);
     }
   };
   

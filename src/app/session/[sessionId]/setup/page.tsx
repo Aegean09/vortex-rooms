@@ -36,6 +36,8 @@ export default function SetupPage() {
   const [volume, setVolume] = useState(0);
   const [skipDeviceSetup, setSkipDeviceSetup] = useState(false);
   const [isJoining, setIsJoining] = useState(false);
+  const [requiresPassword, setRequiresPassword] = useState(false);
+  const [roomPassword, setRoomPassword] = useState('');
   const { toast } = useToast();
   
   // Audio refs
@@ -56,6 +58,18 @@ export default function SetupPage() {
   );
   const { data: sessionData } = useDoc<any>(sessionRef);
   const { data: users } = useCollection<any>(usersRef);
+
+  // Check if room requires password when session data loads
+  useEffect(() => {
+    if (sessionData?.password && !requiresPassword) {
+      // Room exists and has password, check if current user is the creator
+      const isCreator = sessionData.createdBy === authUser?.uid;
+      if (!isCreator) {
+        // User is not the creator, require password
+        setRequiresPassword(true);
+      }
+    }
+  }, [sessionData, requiresPassword, authUser]);
 
   useEffect(() => {
     if (!isUserLoading && !authUser && auth) {
@@ -127,6 +141,33 @@ export default function SetupPage() {
 
   const handleJoin = async () => {
     if (!nameInput.trim() || !firestore || !authUser || !sessionId || isJoining) return;
+    
+    // Check password if room requires it and user is not the creator
+    if (sessionData?.password) {
+      const isCreator = sessionData.createdBy === authUser.uid;
+      if (!isCreator) {
+        // User is not the creator, require password
+        if (!roomPassword.trim()) {
+          setRequiresPassword(true);
+          toast({
+            variant: 'destructive',
+            title: 'Password Required',
+            description: 'This room is password protected. Please enter the password.',
+          });
+          return;
+        }
+        
+        if (roomPassword.trim() !== sessionData.password) {
+          toast({
+            variant: 'destructive',
+            title: 'Incorrect Password',
+            description: 'The password you entered is incorrect.',
+          });
+          setRoomPassword('');
+          return;
+        }
+      }
+    }
     
     setIsJoining(true);
     
@@ -215,6 +256,36 @@ export default function SetupPage() {
         </CardHeader>
 
         <CardContent className="space-y-6">
+          {/* Password Input - Show if room requires password */}
+          {requiresPassword && sessionData?.password && (
+            <div className="space-y-2">
+              <Label htmlFor="room-password" className="text-sm font-medium">
+                Password
+              </Label>
+              <div className="relative">
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  id="room-password"
+                  type="password"
+                  value={roomPassword}
+                  onChange={(e) => setRoomPassword(e.target.value)}
+                  placeholder="Enter room password"
+                  className="pl-10 h-12 text-base"
+                  autoComplete="off"
+                  autoFocus
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && roomPassword.trim() && canJoin) {
+                      handleJoin();
+                    }
+                  }}
+                />
+              </div>
+              <p className="text-xs text-muted-foreground">
+                This is a password protected room. Please enter the password to continue.
+              </p>
+            </div>
+          )}
+
           {/* Username Input */}
           <div className="space-y-2">
             <Label htmlFor="name" className="text-sm font-medium">
@@ -232,7 +303,8 @@ export default function SetupPage() {
                 required
                 minLength={2}
                 maxLength={12}
-                autoFocus
+                autoFocus={!requiresPassword}
+                disabled={requiresPassword && !roomPassword.trim()}
               />
             </div>
           </div>
@@ -372,7 +444,7 @@ export default function SetupPage() {
           <Button
             onClick={handleJoin}
             className="w-full h-12 text-lg font-semibold"
-            disabled={!canJoin || micPermission !== 'granted' || isJoining}
+            disabled={!canJoin || micPermission !== 'granted' || isJoining || (requiresPassword && !roomPassword.trim())}
           >
             {isJoining ? (
               <>
@@ -382,7 +454,11 @@ export default function SetupPage() {
             ) : (
               <>
                 <Sparkles className="mr-2 h-5 w-5" />
-                {micPermission !== 'granted' ? 'Allow Microphone to Join' : 'Join Room'}
+                {requiresPassword && !roomPassword.trim() 
+                  ? 'Enter Password to Continue' 
+                  : micPermission !== 'granted' 
+                    ? 'Allow Microphone to Join' 
+                    : 'Join Room'}
               </>
             )}
           </Button>
