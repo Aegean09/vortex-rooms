@@ -342,59 +342,61 @@ export function VoiceControls({ currentUser }: VoiceControlsProps) {
                   </div>
                 </div>
 
-                {/* Push to Talk */}
-                <div className="space-y-3 pt-2 border-t">
-                  <div className="flex items-center justify-between">
-                    <div className="space-y-0.5">
-                      <Label htmlFor="push-to-talk" className="text-sm font-medium flex items-center gap-2">
-                        <Radio className="h-4 w-4" />
-                        Push to Talk
-                      </Label>
-                      <p className="text-xs text-muted-foreground">
-                        Tuşa basılı tutarak konuş
-                      </p>
+                {/* Push to Talk - Only on Desktop */}
+                {!isMobile && (
+                  <div className="space-y-3 pt-2 border-t">
+                    <div className="flex items-center justify-between">
+                      <div className="space-y-0.5">
+                        <Label htmlFor="push-to-talk" className="text-sm font-medium flex items-center gap-2">
+                          <Radio className="h-4 w-4" />
+                          Push to Talk
+                        </Label>
+                        <p className="text-xs text-muted-foreground">
+                          Tuşa basılı tutarak konuş
+                        </p>
+                      </div>
+                      <Switch
+                        id="push-to-talk"
+                        checked={pushToTalk}
+                        onCheckedChange={setPushToTalk}
+                      />
                     </div>
-                    <Switch
-                      id="push-to-talk"
-                      checked={pushToTalk}
-                      onCheckedChange={setPushToTalk}
-                    />
+                    {pushToTalk && (
+                      <div className="space-y-2">
+                        <Label htmlFor="push-to-talk-key" className="text-xs text-muted-foreground">
+                          Push to Talk Tuşu
+                        </Label>
+                        {isRecordingKey ? (
+                          <div className="space-y-2">
+                            <Button
+                              variant="outline"
+                              className="w-full h-8 text-xs"
+                              disabled
+                            >
+                              Recording...
+                            </Button>
+                            <p className="text-[10px] text-muted-foreground text-center">
+                              Bir tuşa basın
+                            </p>
+                          </div>
+                        ) : (
+                          <div className="space-y-2">
+                            <Button
+                              variant="outline"
+                              className="w-full h-8 text-xs"
+                              onClick={() => setIsRecordingKey(true)}
+                            >
+                              {getKeyDisplayName(pushToTalkKey)}
+                            </Button>
+                            <p className="text-[10px] text-muted-foreground text-center">
+                              {getKeyDisplayName(pushToTalkKey)} tuşuna basılı tutarak konuş
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
-                  {pushToTalk && (
-                    <div className="space-y-2">
-                      <Label htmlFor="push-to-talk-key" className="text-xs text-muted-foreground">
-                        Push to Talk Tuşu
-                      </Label>
-                      {isRecordingKey ? (
-                        <div className="space-y-2">
-                          <Button
-                            variant="outline"
-                            className="w-full h-8 text-xs"
-                            disabled
-                          >
-                            Recording...
-                          </Button>
-                          <p className="text-[10px] text-muted-foreground text-center">
-                            Bir tuşa basın
-                          </p>
-                        </div>
-                      ) : (
-                        <div className="space-y-2">
-                          <Button
-                            variant="outline"
-                            className="w-full h-8 text-xs"
-                            onClick={() => setIsRecordingKey(true)}
-                          >
-                            {getKeyDisplayName(pushToTalkKey)}
-                          </Button>
-                          <p className="text-[10px] text-muted-foreground text-center">
-                            {getKeyDisplayName(pushToTalkKey)} tuşuna basılı tutarak konuş
-                          </p>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
+                )}
               </div>
             </PopoverContent>
           </Popover>

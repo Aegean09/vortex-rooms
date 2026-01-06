@@ -26,7 +26,6 @@ export default function SetupPage() {
   const { toast } = useToast();
   
   // Get room settings from query params (only available during room creation)
-  const roomName = searchParams.get('name') || undefined;
   const password = searchParams.get('password') || undefined;
   const maxUsers = searchParams.get('maxUsers') ? Number(searchParams.get('maxUsers')) : undefined;
 
@@ -99,9 +98,6 @@ export default function SetupPage() {
     
     // Only add optional fields if they were provided during room creation and room doesn't exist yet
     if (!sessionData) {
-      if (roomName) {
-        newSessionData.name = roomName;
-      }
       if (password) {
         newSessionData.password = password; // In production, hash this!
       }
