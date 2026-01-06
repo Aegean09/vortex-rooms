@@ -45,7 +45,12 @@ export const useLocalVoiceActivity = (params: UseLocalVoiceActivityParams): bool
     const DEACTIVATION_FRAMES = 8; // Need 8 frames to deactivate (longer to prevent flickering)
 
     const checkVoiceActivity = () => {
-      if (analyserRef.current && !isMuted) {
+      // Resume AudioContext if suspended (happens when tab goes to background)
+      if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
+        audioContextRef.current.resume().catch(console.error);
+      }
+      
+      if (analyserRef.current && !isMuted && audioContextRef.current?.state === 'running') {
         analyserRef.current.getByteFrequencyData(dataArray);
         const rms = calculateRMS(dataArray);
         const isAboveThreshold = rms > threshold;

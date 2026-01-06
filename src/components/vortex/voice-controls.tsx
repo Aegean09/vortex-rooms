@@ -127,7 +127,7 @@ export function VoiceControls({ currentUser }: VoiceControlsProps) {
         }
       };
     } else {
-      setHasMicPermission(false);
+        setHasMicPermission(false);
     }
   }, [localStream, rawStream, isMuted, noiseGateThreshold]);
 

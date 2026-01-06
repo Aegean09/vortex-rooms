@@ -172,16 +172,16 @@ export function SubSessionList({ subSessions, users, currentUser, onSubSessionCh
                     const userIsDeafened = isCurrentUser ? isDeafened : false;
 
                     return (
-                      <li key={user.id} className="flex items-center gap-3">
-                        <div className="relative">
+                    <li key={user.id} className="flex items-center gap-3">
+                      <div className="relative">
                           <Avatar className={cn(
                             "h-8 w-8 transition-all duration-200",
                             isSpeaking && !userIsMuted && !userIsDeafened && "ring-2 ring-green-500 ring-offset-2 ring-offset-background",
                             userIsMuted && "ring-2 ring-red-500 ring-offset-2 ring-offset-background",
                             userIsDeafened && "ring-2 ring-orange-500 ring-offset-2 ring-offset-background"
                           )}>
-                            <AvatarFallback>{user.name.substring(0, 2).toUpperCase()}</AvatarFallback>
-                          </Avatar>
+                          <AvatarFallback>{user.name.substring(0, 2).toUpperCase()}</AvatarFallback>
+                        </Avatar>
                           <span className={cn(
                             "absolute bottom-0 right-0 block h-2.5 w-2.5 rounded-full border-2 border-card transition-all duration-200",
                             isSpeaking && !userIsMuted && !userIsDeafened ? "bg-green-500 animate-pulse" : 
@@ -189,10 +189,10 @@ export function SubSessionList({ subSessions, users, currentUser, onSubSessionCh
                             userIsDeafened ? "bg-orange-500" : 
                             "bg-green-500"
                           )} />
-                        </div>
+                      </div>
                         <span className="font-medium text-sm truncate flex-1">
                           {user.name} {isCurrentUser ? '(You)' : ''}
-                        </span>
+                      </span>
                         {isSpeaking && !userIsMuted && !userIsDeafened && (
                           <div className="flex items-center gap-1">
                             <div className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse" />
@@ -209,7 +209,7 @@ export function SubSessionList({ subSessions, users, currentUser, onSubSessionCh
                             <HeadphoneOff className="h-3.5 w-3.5 text-orange-400" />
                           </div>
                         )}
-                      </li>
+                    </li>
                     );
                   })}
                    {sessionUsers.length === 0 && (

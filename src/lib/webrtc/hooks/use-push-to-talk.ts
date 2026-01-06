@@ -49,6 +49,35 @@ export const usePushToTalk = (params: UsePushToTalkParams) => {
     }
   }, [localStream, pushToTalkKey, enabled, onKeyStateChange]);
 
+  // Handle visibility change - reset PTT state when tab goes to background
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.hidden && isPressingKeyRef.current && enabled && localStream) {
+        // Tab went to background while key was pressed - release it
+        isPressingKeyRef.current = false;
+        toggleMuteTracks(localStream, !wasMutedBeforePushRef.current);
+        onKeyStateChange?.(false);
+      }
+    };
+
+    const handleBlur = () => {
+      // Window lost focus - reset PTT state to prevent stuck keys
+      if (isPressingKeyRef.current && enabled && localStream) {
+        isPressingKeyRef.current = false;
+        toggleMuteTracks(localStream, !wasMutedBeforePushRef.current);
+        onKeyStateChange?.(false);
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('blur', handleBlur);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('blur', handleBlur);
+    };
+  }, [enabled, localStream, onKeyStateChange]);
+
   useEffect(() => {
     if (!enabled) {
       // If push to talk is disabled, restore mute state

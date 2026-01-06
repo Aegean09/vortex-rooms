@@ -367,7 +367,15 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
     const dataArray = new Uint8Array(analyser.frequencyBinCount);
     
     const processNoiseGate = () => {
-      if (!analyserRef.current || !gainNodeRef.current) return;
+      // Resume AudioContext if suspended (happens when tab goes to background)
+      if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
+        audioContextRef.current.resume().catch(console.error);
+      }
+
+      if (!analyserRef.current || !gainNodeRef.current || audioContextRef.current?.state !== 'running') {
+        animationFrameRef.current = requestAnimationFrame(processNoiseGate);
+        return;
+      }
 
       analyserRef.current.getByteFrequencyData(dataArray);
       
