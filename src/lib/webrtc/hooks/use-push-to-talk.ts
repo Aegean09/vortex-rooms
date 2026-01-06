@@ -60,7 +60,7 @@ export const usePushToTalk = (params: UsePushToTalkParams) => {
         onKeyStateChange?.(false);
       } else if (localStream) {
         // Push to talk was just disabled, restore tracks to match mute state
-        // If user wasn't muted before PTT, ensure tracks are enabled
+        // If user wasn't muted before PTT, ensure tracks are enabled (always open mode)
         if (!wasMutedBeforePushRef.current) {
           toggleMuteTracks(localStream, true);
         } else {
@@ -71,6 +71,12 @@ export const usePushToTalk = (params: UsePushToTalkParams) => {
       return;
     }
 
+    // Push to talk is enabled - ensure tracks are muted initially (unless key is already pressed)
+    if (localStream && !isPressingKeyRef.current) {
+      wasMutedBeforePushRef.current = isMuted;
+      toggleMuteTracks(localStream, false); // Mute tracks when push to talk is enabled
+    }
+
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
 
@@ -78,7 +84,7 @@ export const usePushToTalk = (params: UsePushToTalkParams) => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
     };
-  }, [enabled, handleKeyDown, handleKeyUp, localStream, setIsMuted]);
+  }, [enabled, handleKeyDown, handleKeyUp, localStream, setIsMuted, isMuted]);
 
   // Cleanup on unmount
   useEffect(() => {

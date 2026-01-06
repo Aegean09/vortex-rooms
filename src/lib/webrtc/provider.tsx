@@ -198,16 +198,25 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
     prevPushToTalkRef.current = pushToTalk;
   }, [pushToTalk, localStream, setIsMuted]);
 
-  const toggleMute = useCallback(() => {
-    if (localStream) {
+  const toggleMute = useCallback(async () => {
+    if (localStream && firestore && user) {
       const newMutedState = !isMuted;
       toggleMuteTracks(localStream, !newMutedState);
       setIsMuted(newMutedState);
+      
+      // Sync mute state to Firestore
+      const userDocRef = doc(firestore, 'sessions', sessionId, 'users', user.uid);
+      try {
+        await updateDoc(userDocRef, { isMuted: newMutedState });
+      } catch (error) {
+        console.error('Error updating mute state in Firestore:', error);
+      }
+      
       if (!newMutedState && isDeafened) {
         setIsDeafened(false);
       }
     }
-  }, [localStream, isMuted, isDeafened]);
+  }, [localStream, isMuted, isDeafened, firestore, user, sessionId]);
 
   const toggleDeafen = useCallback(() => {
     const newDeafenedState = !isDeafened;
@@ -370,8 +379,13 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
       }
       const rms = Math.sqrt(sum / dataArray.length);
 
-      // Apply noise gate: mute if below threshold
-      gainNodeRef.current.gain.value = rms > noiseGateThreshold ? 1.0 : 0.0;
+      // Check if we should mute based on:
+      // 1. User manually muted
+      // 2. Push to talk enabled but key not pressed
+      const shouldMute = isMuted || (pushToTalk && !isPressingPushToTalkKey);
+      
+      // Apply noise gate: mute if below threshold OR if manually muted/push to talk
+      gainNodeRef.current.gain.value = (!shouldMute && rms > noiseGateThreshold) ? 1.0 : 0.0;
 
       animationFrameRef.current = requestAnimationFrame(processNoiseGate);
     };
@@ -395,7 +409,7 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
         audioContext.close();
       }
     };
-  }, [rawStream, noiseGateThreshold]);
+  }, [rawStream, noiseGateThreshold, isMuted, pushToTalk, isPressingPushToTalkKey]);
 
   // Update existing peer connections when localStream changes
   // This is especially important when noise gate threshold changes
