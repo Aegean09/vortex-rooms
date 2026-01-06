@@ -66,7 +66,7 @@ export function VoiceControls({ currentUser }: VoiceControlsProps) {
   const [currentLevel, setCurrentLevel] = useState(0); // Canlı ses seviyesi
   const [isRecordingKey, setIsRecordingKey] = useState(false);
   const analyserRef = useRef<AnalyserNode | null>(null);
-  const animationFrameRef = useRef<number>();
+  const animationFrameRef = useRef<number | undefined>(undefined);
 
   const router = useRouter();
   const { toast } = useToast();
@@ -157,7 +157,7 @@ export function VoiceControls({ currentUser }: VoiceControlsProps) {
   
   // Logaritmik scale (dB) - insan kulağı logaritmik algılar
   // RMS'i dB'ye çevir: dB = 20 * log10(rms)
-  // -60 dB = çok sessiz, -20 dB = normal konuşma, 0 dB = maksimum
+  // -60 dB = very quiet, -20 dB = normal speech, 0 dB = maximum
   const minDb = -60;
   const maxDb = 0;
   
@@ -256,7 +256,7 @@ export function VoiceControls({ currentUser }: VoiceControlsProps) {
             </TooltipContent>
           </Tooltip>
           
-          {/* Ses Hassasiyet Ayarları */}
+          {/* Audio Sensitivity Settings */}
           <Popover>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -317,16 +317,16 @@ export function VoiceControls({ currentUser }: VoiceControlsProps) {
                   </div>
                 </div>
                 
-                {/* Hassasiyet Slider */}
+                {/* Sensitivity Slider */}
                 <div className="space-y-3 pt-2">
                   <div className="flex justify-between text-xs">
-                    <span className="text-muted-foreground">Hassasiyet</span>
+                    <span className="text-muted-foreground">Sensitivity</span>
                     <span className="font-mono text-primary">{thresholdPercent}%</span>
                   </div>
                   <Slider
                     value={[thresholdPercent]}
                     onValueChange={([value]) => {
-                      // Yüzdeyi dB'ye, dB'yi RMS'e çevir
+                      // Convert percentage to dB, then dB to RMS
                       const dB = minDb + (value / 100) * (maxDb - minDb);
                       const rms = Math.pow(10, dB / 20);
                       setNoiseGateThreshold(rms);
@@ -337,8 +337,8 @@ export function VoiceControls({ currentUser }: VoiceControlsProps) {
                     className="w-full"
                   />
                   <div className="flex justify-between text-[10px] text-muted-foreground">
-                    <span>Sessiz Ortam</span>
-                    <span>Gürültülü Ortam</span>
+                    <span>Quiet Environment</span>
+                    <span>Noisy Environment</span>
                   </div>
                 </div>
 
@@ -352,7 +352,7 @@ export function VoiceControls({ currentUser }: VoiceControlsProps) {
                           Push to Talk
                         </Label>
                         <p className="text-xs text-muted-foreground">
-                          Tuşa basılı tutarak konuş
+                          Hold key to speak
                         </p>
                       </div>
                       <Switch
@@ -364,7 +364,7 @@ export function VoiceControls({ currentUser }: VoiceControlsProps) {
                     {pushToTalk && (
                       <div className="space-y-2">
                         <Label htmlFor="push-to-talk-key" className="text-xs text-muted-foreground">
-                          Push to Talk Tuşu
+                          Push to Talk Key
                         </Label>
                         {isRecordingKey ? (
                           <div className="space-y-2">
@@ -376,7 +376,7 @@ export function VoiceControls({ currentUser }: VoiceControlsProps) {
                               Recording...
                             </Button>
                             <p className="text-[10px] text-muted-foreground text-center">
-                              Bir tuşa basın
+                              Press a key
                             </p>
                           </div>
                         ) : (
@@ -389,7 +389,7 @@ export function VoiceControls({ currentUser }: VoiceControlsProps) {
                               {getKeyDisplayName(pushToTalkKey)}
                             </Button>
                             <p className="text-[10px] text-muted-foreground text-center">
-                              {getKeyDisplayName(pushToTalkKey)} tuşuna basılı tutarak konuş
+                              Hold {getKeyDisplayName(pushToTalkKey)} to speak
                             </p>
                           </div>
                         )}

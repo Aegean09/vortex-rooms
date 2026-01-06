@@ -36,7 +36,7 @@ export function SubSessionList({ subSessions, users, currentUser, onSubSessionCh
   const firestore = useFirestore();
   const params = useParams();
   const sessionId = params.sessionId as string;
-  const { remoteVoiceActivity, localVoiceActivity } = useWebRTC();
+  const { remoteVoiceActivity, localVoiceActivity, isMuted, isDeafened } = useWebRTC();
 
   useEffect(() => {
     // When the user's current subsession changes, make sure its accordion item is open.
@@ -166,28 +166,38 @@ export function SubSessionList({ subSessions, users, currentUser, onSubSessionCh
                     const isSpeaking = isCurrentUser 
                       ? localVoiceActivity 
                       : voiceActivity?.isActive || false;
+                    
+                    // Check mute/deafen status
+                    const userIsMuted = isCurrentUser ? isMuted : user.isMuted || false;
+                    const userIsDeafened = isCurrentUser ? isDeafened : false;
 
                     return (
                       <li key={user.id} className="flex items-center gap-3">
                         <div className="relative">
                           <Avatar className={cn(
                             "h-8 w-8 transition-all duration-200",
-                            isSpeaking && "ring-2 ring-green-500 ring-offset-2 ring-offset-background"
+                            isSpeaking && "ring-2 ring-green-500 ring-offset-2 ring-offset-background",
+                            userIsMuted && "ring-2 ring-red-500 ring-offset-2 ring-offset-background"
                           )}>
                             <AvatarFallback>{user.name.substring(0, 2).toUpperCase()}</AvatarFallback>
                           </Avatar>
                           <span className={cn(
                             "absolute bottom-0 right-0 block h-2.5 w-2.5 rounded-full border-2 border-card transition-all duration-200",
-                            isSpeaking ? "bg-green-500 animate-pulse" : "bg-green-500"
+                            isSpeaking ? "bg-green-500 animate-pulse" : userIsMuted ? "bg-red-500" : "bg-green-500"
                           )} />
                         </div>
                         <span className="font-medium text-sm truncate flex-1">
                           {user.name} {isCurrentUser ? '(You)' : ''}
                         </span>
-                        {isSpeaking && (
+                        {isSpeaking && !userIsMuted && (
                           <div className="flex items-center gap-1">
                             <div className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse" />
                             <span className="text-[10px] text-muted-foreground">Speaking</span>
+                          </div>
+                        )}
+                        {userIsMuted && (
+                          <div className="flex items-center gap-1">
+                            <span className="text-[10px] text-red-400 font-medium">Muted</span>
                           </div>
                         )}
                       </li>
