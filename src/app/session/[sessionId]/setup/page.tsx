@@ -1,17 +1,23 @@
-
 "use client";
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import { useAuth, useUser, useFirestore, setDocumentNonBlocking, useMemoFirebase, useDoc, useCollection } from '@/firebase';
 import { doc, serverTimestamp, collection } from 'firebase/firestore';
 import { initiateAnonymousSignIn } from '@/firebase/non-blocking-login';
-import { DeviceSetup } from '@/components/vortex/device-setup';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { ArrowLeft, User as UserIcon, AlertTriangle } from 'lucide-react';
+import { Label } from '@/components/ui/label';
+import { ArrowLeft, User as UserIcon, Mic, Check, AlertCircle, Lock, Users, Settings2, ChevronDown, ChevronUp, Sparkles } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { cn } from '@/lib/utils';
+import { Progress } from '@/components/ui/progress';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+
+type RoomType = 'default' | 'custom';
 
 export default function SetupPage() {
   const router = useRouter();
@@ -21,13 +27,22 @@ export default function SetupPage() {
   const auth = useAuth();
   const firestore = useFirestore();
   const { user: authUser, isUserLoading } = useUser();
-  const [username, setUsername] = useState<string | null>(null);
   const [nameInput, setNameInput] = useState('');
+  const [roomType, setRoomType] = useState<RoomType>('default');
+  const [password, setPassword] = useState('');
+  const [maxUsers, setMaxUsers] = useState('');
+  const [showRoomSettings, setShowRoomSettings] = useState(false);
+  const [micPermission, setMicPermission] = useState<'prompt' | 'granted' | 'denied'>('prompt');
+  const [volume, setVolume] = useState(0);
+  const [skipDeviceSetup, setSkipDeviceSetup] = useState(false);
   const { toast } = useToast();
   
-  // Get room settings from query params (only available during room creation)
-  const password = searchParams.get('password') || undefined;
-  const maxUsers = searchParams.get('maxUsers') ? Number(searchParams.get('maxUsers')) : undefined;
+  // Audio refs
+  const localStreamRef = useRef<MediaStream | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
+  const animationFrameRef = useRef<number>();
 
   // Check if room already exists and has max users limit
   const sessionRef = useMemoFirebase(
@@ -47,25 +62,70 @@ export default function SetupPage() {
     }
   }, [authUser, isUserLoading, auth]);
 
-  useEffect(() => {
-    if (authUser && sessionId) {
-      const storedUsername = sessionStorage.getItem(`vortex-username-${sessionId}`);
-      if (storedUsername) {
-        setUsername(storedUsername);
-      }
+  const cleanupAudio = useCallback(() => {
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = undefined;
     }
-  }, [authUser, sessionId]);
-  
-  const handleUsernameSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (nameInput.trim()) {
-      sessionStorage.setItem(`vortex-username-${sessionId}`, nameInput.trim());
-      setUsername(nameInput.trim());
+    sourceRef.current?.disconnect();
+    analyserRef.current?.disconnect();
+    localStreamRef.current?.getTracks().forEach(track => track.stop());
+    if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
+      audioContextRef.current.close().catch(console.error);
     }
-  };
+    sourceRef.current = null;
+    analyserRef.current = null;
+    audioContextRef.current = null;
+    localStreamRef.current = null;
+    setVolume(0);
+  }, []);
 
-  const handleSetupComplete = () => {
-    if (!firestore || !authUser || !sessionId) return;
+  const startAudioProcessing = useCallback((stream: MediaStream) => {
+    if (audioContextRef.current) return;
+    const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+    audioContextRef.current = audioContext;
+    const analyser = audioContext.createAnalyser();
+    analyser.fftSize = 512;
+    analyser.smoothingTimeConstant = 0.5;
+    analyserRef.current = analyser;
+    const source = audioContext.createMediaStreamSource(stream);
+    sourceRef.current = source;
+    source.connect(analyser);
+    const dataArray = new Uint8Array(analyser.frequencyBinCount);
+    const updateVolume = () => {
+      if (analyserRef.current) {
+        analyserRef.current.getByteFrequencyData(dataArray);
+        const average = dataArray.reduce((sum, value) => sum + value, 0) / dataArray.length;
+        let scaledVolume = Math.min(100, Math.floor(average * 1.5));
+        if (scaledVolume > 5 && scaledVolume < 20) scaledVolume = 20;
+        setVolume(scaledVolume);
+      }
+      animationFrameRef.current = requestAnimationFrame(updateVolume);
+    };
+    updateVolume();
+  }, []);
+
+  const requestMicPermission = useCallback(async () => {
+    cleanupAudio();
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      localStreamRef.current = stream;
+      setMicPermission('granted');
+      startAudioProcessing(stream);
+    } catch (err) {
+      console.error('Error accessing microphone:', err);
+      setMicPermission('denied');
+    }
+  }, [cleanupAudio, startAudioProcessing]);
+
+  useEffect(() => {
+    return () => {
+      cleanupAudio();
+    };
+  }, [cleanupAudio]);
+
+  const handleJoin = async () => {
+    if (!nameInput.trim() || !firestore || !authUser || !sessionId) return;
     
     // Check max users limit if room already exists
     const existingMaxUsers = sessionData?.maxUsers;
@@ -81,9 +141,13 @@ export default function SetupPage() {
       return;
     }
     
-    const sessionDocRef = doc(firestore, 'sessions', sessionId);
+    cleanupAudio();
     
-    // Build session data with optional settings
+    // Save username
+    sessionStorage.setItem(`vortex-username-${sessionId}`, nameInput.trim());
+    
+    // Build session data
+    const sessionDocRef = doc(firestore, 'sessions', sessionId);
     const newSessionData: any = {
       createdAt: serverTimestamp(),
       lastActive: serverTimestamp(),
@@ -91,79 +155,218 @@ export default function SetupPage() {
       sessionLink: `/session/${sessionId}`,
     };
     
-    // Only set createdBy if this is a new room (no existing session data)
+    // Only set createdBy if this is a new room
     if (!sessionData) {
       newSessionData.createdBy = authUser.uid;
-    }
-    
-    // Only add optional fields if they were provided during room creation and room doesn't exist yet
-    if (!sessionData) {
-      if (password) {
-        newSessionData.password = password; // In production, hash this!
-      }
-      if (maxUsers && maxUsers > 0) {
-        newSessionData.maxUsers = maxUsers;
+      
+      // Add optional fields for custom rooms
+      if (roomType === 'custom') {
+        if (password.trim()) {
+          newSessionData.password = password.trim();
+        }
+        if (maxUsers.trim() && !isNaN(Number(maxUsers)) && Number(maxUsers) > 0) {
+          newSessionData.maxUsers = Number(maxUsers);
+        }
       }
     }
     
     setDocumentNonBlocking(sessionDocRef, newSessionData, { merge: true });
-
     sessionStorage.setItem(`vortex-setup-complete-${sessionId}`, 'true');
     router.push(`/session/${sessionId}`);
   };
 
   if (isUserLoading || !authUser) {
-     return (
-        <div className="flex h-screen w-full items-center justify-center bg-background">
-          <div className="flex flex-col items-center gap-4">
-            <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-primary"></div>
-            <p className="text-lg text-muted-foreground">Preparing Setup...</p>
-          </div>
-        </div>
-    );
-  }
-  
-  if (!username) {
     return (
-       <main className="flex min-h-screen flex-col items-center justify-center p-8">
-        <div className="absolute inset-0 -z-10 h-full w-full bg-background bg-[radial-gradient(#2f2f33_1px,transparent_1px)] [background-size:32px_32px]"></div>
-        <Card className="relative w-full max-w-md shadow-2xl bg-card/80 backdrop-blur-sm border-primary/20">
-            <Button variant="ghost" size="icon" className="absolute top-4 right-4 h-8 w-8" onClick={() => router.push('/')}>
-              <ArrowLeft className="h-4 w-4" />
-            </Button>
-            <form onSubmit={handleUsernameSubmit}>
-                <CardHeader className="text-center pt-12 sm:pt-6">
-                    <CardTitle className="text-3xl font-bold">Enter the Vortex</CardTitle>
-                    <CardDescription className="text-muted-foreground pt-2">
-                        Choose a username to join the session. This is temporary and only for this room.
-                    </CardDescription>
-                </CardHeader>
-                <CardContent>
-                    <div className="relative">
-                        <UserIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                        <Input
-                            id="name"
-                            value={nameInput}
-                            onChange={(e) => setNameInput(e.target.value)}
-                            placeholder="Your cool name"
-                            className="pl-10 h-12 text-base"
-                            autoComplete="off"
-                            required
-                            minLength={2}
-                            maxLength={12}
-                        />
-                    </div>
-                </CardContent>
-                <CardFooter>
-                    <Button type="submit" className="w-full h-12 text-lg font-semibold">
-                        Continue
-                    </Button>
-                </CardFooter>
-            </form>
-        </Card>
-      </main>
+      <div className="flex h-screen w-full items-center justify-center bg-background">
+        <div className="flex flex-col items-center gap-4">
+          <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-primary"></div>
+          <p className="text-lg text-muted-foreground">Preparing Setup...</p>
+        </div>
+      </div>
     );
   }
 
-  return <DeviceSetup username={username} onSetupComplete={handleSetupComplete} />;
+  const voiceActivity = volume > 10;
+  const canJoin = nameInput.trim().length >= 2;
+
+  return (
+    <main className="flex min-h-screen flex-col items-center justify-center p-4 sm:p-8">
+      <div className="absolute inset-0 -z-10 h-full w-full bg-background bg-[radial-gradient(#2f2f33_1px,transparent_1px)] [background-size:32px_32px]"></div>
+      <Card className="relative w-full max-w-lg shadow-2xl bg-card/80 backdrop-blur-sm border-primary/20">
+        <Button variant="ghost" size="icon" className="absolute top-4 right-4 h-8 w-8" onClick={() => router.push('/')}>
+          <ArrowLeft className="h-4 w-4" />
+        </Button>
+        
+        <CardHeader className="text-center pt-12 sm:pt-6">
+          <CardTitle className="text-3xl font-bold">Enter the Vortex</CardTitle>
+          <CardDescription className="text-muted-foreground pt-2">
+            Set up your room and join the session
+          </CardDescription>
+        </CardHeader>
+
+        <CardContent className="space-y-6">
+          {/* Username Input */}
+          <div className="space-y-2">
+            <Label htmlFor="name" className="text-sm font-medium">
+              Your Name
+            </Label>
+            <div className="relative">
+              <UserIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                id="name"
+                value={nameInput}
+                onChange={(e) => setNameInput(e.target.value)}
+                placeholder="Your cool name"
+                className="pl-10 h-12 text-base"
+                autoComplete="off"
+                required
+                minLength={2}
+                maxLength={12}
+                autoFocus
+              />
+            </div>
+          </div>
+
+          {/* Optional Room Settings */}
+          <Collapsible open={showRoomSettings} onOpenChange={setShowRoomSettings}>
+            <CollapsibleTrigger asChild>
+              <Button variant="ghost" className="w-full justify-between p-2 h-auto">
+                <div className="flex items-center gap-2">
+                  <Settings2 className="h-4 w-4" />
+                  <span className="text-sm font-medium">Room Settings (Optional)</span>
+                </div>
+                {showRoomSettings ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+              </Button>
+            </CollapsibleTrigger>
+            <CollapsibleContent className="space-y-4 pt-2">
+              <RadioGroup value={roomType} onValueChange={(value) => setRoomType(value as RoomType)}>
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="default" id="default" />
+                  <Label htmlFor="default" className="font-normal cursor-pointer">
+                    Default Room
+                  </Label>
+                </div>
+                <div className="flex items-center space-x-2 mt-2">
+                  <RadioGroupItem value="custom" id="custom" />
+                  <Label htmlFor="custom" className="font-normal cursor-pointer">
+                    Custom Room
+                  </Label>
+                </div>
+              </RadioGroup>
+
+              {roomType === 'custom' && (
+                <div className="grid gap-4 pt-2 border-t">
+                  <div className="grid gap-2">
+                    <Label htmlFor="password" className="flex items-center gap-2 text-sm">
+                      <Lock className="h-4 w-4" />
+                      Password
+                    </Label>
+                    <Input
+                      id="password"
+                      type="password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="Enter password (optional)"
+                      maxLength={20}
+                      className="h-10"
+                    />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="max-users" className="flex items-center gap-2 text-sm">
+                      <Users className="h-4 w-4" />
+                      Max Users
+                    </Label>
+                    <Input
+                      id="max-users"
+                      type="text"
+                      inputMode="numeric"
+                      value={maxUsers}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        if (value === '' || /^\d+$/.test(value)) {
+                          const numValue = value === '' ? 0 : Number(value);
+                          if (value === '' || (numValue > 0 && numValue <= 100)) {
+                            setMaxUsers(value);
+                          }
+                        }
+                      }}
+                      placeholder="e.g. 10"
+                      className="h-10"
+                    />
+                  </div>
+                </div>
+              )}
+            </CollapsibleContent>
+          </Collapsible>
+
+          {/* Device Setup (Optional) */}
+          <div className="space-y-3 pt-2 border-t">
+            <div className="flex items-center justify-between">
+              <Label className="text-sm font-medium flex items-center gap-2">
+                <Mic className="h-4 w-4" />
+                Test Microphone (Optional)
+              </Label>
+              {micPermission === 'granted' && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setSkipDeviceSetup(true);
+                    cleanupAudio();
+                  }}
+                  className="text-xs"
+                >
+                  Skip
+                </Button>
+              )}
+            </div>
+
+            {nameInput.trim() && (
+              <div className="flex items-center gap-4 p-4 rounded-lg bg-background border">
+                <div className="relative">
+                  <Avatar className={cn(
+                    "h-12 w-12 ring-2 ring-transparent transition-all duration-100",
+                    voiceActivity && "ring-green-500 ring-offset-2 ring-offset-background"
+                  )}>
+                    <AvatarFallback>{nameInput.substring(0, 2).toUpperCase()}</AvatarFallback>
+                  </Avatar>
+                </div>
+                <div className="flex-1 space-y-2">
+                  <p className="font-semibold text-sm">{nameInput}</p>
+                  {micPermission === 'prompt' && (
+                    <Button size="sm" onClick={requestMicPermission} className="w-full">
+                      <Mic className="mr-2 h-4 w-4" /> Allow Microphone
+                    </Button>
+                  )}
+                  {micPermission === 'granted' && (
+                    <>
+                      <p className="text-xs text-muted-foreground">Speak into your mic to test</p>
+                      <Progress value={volume} className="w-full h-2" />
+                    </>
+                  )}
+                  {micPermission === 'denied' && (
+                    <div className="flex items-center gap-2 text-xs text-destructive">
+                      <AlertCircle className="h-4 w-4" />
+                      <span>Microphone access denied</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        </CardContent>
+
+        <CardFooter>
+          <Button
+            onClick={handleJoin}
+            className="w-full h-12 text-lg font-semibold"
+            disabled={!canJoin}
+          >
+            <Sparkles className="mr-2 h-5 w-5" />
+            Join Room
+          </Button>
+        </CardFooter>
+      </Card>
+    </main>
+  );
 }
