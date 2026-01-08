@@ -17,6 +17,13 @@ import { usePushToTalk } from './hooks/use-push-to-talk';
 import { useRemoteVoiceActivity } from './hooks/use-remote-voice-activity';
 import { useLocalVoiceActivity } from './hooks/use-local-voice-activity';
 import { toggleMuteTracks } from './services/audio-service';
+import {
+  createAudioNodesWithNoiseSuppression,
+  updateNoiseSuppressionIntensity,
+  resetNoiseSuppression,
+  cleanupNoiseSuppressionNodes,
+  type NoiseSuppressionNodes,
+} from './helpers/audio-helpers';
 
 
 interface WebRTCContextType {
@@ -37,6 +44,10 @@ interface WebRTCContextType {
   setPushToTalk: (enabled: boolean) => void;
   pushToTalkKey: string;
   setPushToTalkKey: (key: string) => void;
+  noiseSuppressionEnabled: boolean;
+  setNoiseSuppressionEnabled: (enabled: boolean) => void;
+  noiseSuppressionIntensity: number; // 0.0 to 1.0
+  setNoiseSuppressionIntensity: (intensity: number) => void;
 }
 
 const WebRTCContext = createContext<WebRTCContextType | undefined>(undefined);
@@ -87,6 +98,8 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
   const [pushToTalkKey, setPushToTalkKey] = useState<string>('Space'); // Default: Space key
   const [isPressingPushToTalkKey, setIsPressingPushToTalkKey] = useState<boolean>(false);
   const prevPushToTalkRef = useRef(false);
+  const [noiseSuppressionEnabled, setNoiseSuppressionEnabled] = useState<boolean>(false);
+  const [noiseSuppressionIntensity, setNoiseSuppressionIntensity] = useState<number>(0.5); // Default: Medium (0.5)
 
   // Remote voice activity detection
   const remoteVoiceActivity = useRemoteVoiceActivity({
@@ -104,12 +117,8 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
   // Filter out voice activity when push to talk is enabled but key is not pressed
   const localVoiceActivity = pushToTalk && !isPressingPushToTalkKey ? false : rawLocalVoiceActivity;
   
-  // Refs for noise gate processing
-  const audioContextRef = useRef<AudioContext | null>(null);
-  const gainNodeRef = useRef<GainNode | null>(null);
-  const analyserRef = useRef<AnalyserNode | null>(null);
-  const sourceNodeRef = useRef<MediaStreamAudioSourceNode | null>(null);
-  const destinationNodeRef = useRef<MediaStreamAudioDestinationNode | null>(null);
+  // Refs for noise gate and noise suppression processing
+  const audioNodesRef = useRef<NoiseSuppressionNodes | null>(null);
   const animationFrameRef = useRef<number | undefined>(undefined);
 
 
@@ -319,105 +328,164 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
-  // Noise gate processing: Create processed stream from raw stream
+  // Noise gate and noise suppression processing: Create processed stream from raw stream
   useEffect(() => {
     if (!rawStream || rawStream.getAudioTracks().length === 0) {
       setLocalStream(null);
       return;
     }
 
-    // Cleanup previous audio context
+    let isMounted = true;
+
+    // Cleanup previous audio nodes
     if (animationFrameRef.current) {
       cancelAnimationFrame(animationFrameRef.current);
     }
-    if (sourceNodeRef.current) {
-      sourceNodeRef.current.disconnect();
-    }
-    if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
-      audioContextRef.current.close();
+    if (audioNodesRef.current) {
+      cleanupNoiseSuppressionNodes(audioNodesRef.current, animationFrameRef.current);
+      audioNodesRef.current = null;
     }
 
-    const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-    audioContextRef.current = audioContext;
-
-    const source = audioContext.createMediaStreamSource(rawStream);
-    sourceNodeRef.current = source;
-
-    const analyser = audioContext.createAnalyser();
-    analyser.fftSize = 256;
-    analyser.smoothingTimeConstant = 0.3;
-    analyserRef.current = analyser;
-
-    const gainNode = audioContext.createGain();
-    gainNodeRef.current = gainNode;
-
-    const destination = audioContext.createMediaStreamDestination();
-    destinationNodeRef.current = destination;
-
-    // Connect: source -> analyser -> gain -> destination
-    source.connect(analyser);
-    source.connect(gainNode);
-    gainNode.connect(destination);
-
-    // Create processed stream
-    const processedStream = destination.stream;
-    setLocalStream(processedStream);
-
-    // Noise gate processing loop
-    const dataArray = new Uint8Array(analyser.frequencyBinCount);
-    
-    const processNoiseGate = () => {
-      // Resume AudioContext if suspended (happens when tab goes to background)
-      if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
-        audioContextRef.current.resume().catch(console.error);
+    // Create audio nodes with noise suppression
+    createAudioNodesWithNoiseSuppression(
+      rawStream,
+      {
+        threshold: noiseGateThreshold,
+        fftSize: 256,
+        smoothingTimeConstant: 0.3,
+      },
+      {
+        enabled: noiseSuppressionEnabled,
+        intensity: noiseSuppressionIntensity,
       }
-
-      if (!analyserRef.current || !gainNodeRef.current || audioContextRef.current?.state !== 'running') {
-        animationFrameRef.current = requestAnimationFrame(processNoiseGate);
+    ).then((nodes) => {
+      if (!isMounted) {
+        cleanupNoiseSuppressionNodes(nodes, animationFrameRef.current);
         return;
       }
 
-      analyserRef.current.getByteFrequencyData(dataArray);
-      
-      // Calculate RMS (Root Mean Square) for better voice activity detection
-      let sum = 0;
-      for (let i = 0; i < dataArray.length; i++) {
-        const normalized = dataArray[i] / 255;
-        sum += normalized * normalized;
+      audioNodesRef.current = nodes;
+
+      // Resume AudioContext if suspended
+      if (nodes.audioContext.state === 'suspended') {
+        nodes.audioContext.resume().catch(console.error);
       }
-      const rms = Math.sqrt(sum / dataArray.length);
 
-      // Check if we should mute based on:
-      // 1. User manually muted
-      // 2. Push to talk enabled but key not pressed
-      const shouldMute = isMuted || (pushToTalk && !isPressingPushToTalkKey);
+      // Create processed stream
+      const processedStream = nodes.destination.stream;
+      setLocalStream(processedStream);
+
+      // Noise gate processing loop
+      const dataArray = new Uint8Array(nodes.analyser.frequencyBinCount);
       
-      // Apply noise gate: mute if below threshold OR if manually muted/push to talk
-      gainNodeRef.current.gain.value = (!shouldMute && rms > noiseGateThreshold) ? 1.0 : 0.0;
+      const processNoiseGate = () => {
+        // Resume AudioContext if suspended (happens when tab goes to background)
+        if (nodes.audioContext && nodes.audioContext.state === 'suspended') {
+          nodes.audioContext.resume().catch(console.error);
+        }
 
-      animationFrameRef.current = requestAnimationFrame(processNoiseGate);
-    };
+        if (!nodes.analyser || !nodes.gainNode || nodes.audioContext?.state !== 'running' || !isMounted) {
+          if (isMounted) {
+            animationFrameRef.current = requestAnimationFrame(processNoiseGate);
+          }
+          return;
+        }
 
-    processNoiseGate();
+        nodes.analyser.getByteFrequencyData(dataArray);
+        
+        // Calculate RMS (Root Mean Square) for better voice activity detection
+        let sum = 0;
+        for (let i = 0; i < dataArray.length; i++) {
+          const normalized = dataArray[i] / 255;
+          sum += normalized * normalized;
+        }
+        const rms = Math.sqrt(sum / dataArray.length);
+
+        // Check if we should mute based on:
+        // 1. User manually muted
+        // 2. Push to talk enabled but key not pressed
+        const shouldMute = isMuted || (pushToTalk && !isPressingPushToTalkKey);
+        
+        // Apply noise gate: mute if below threshold OR if manually muted/push to talk
+        nodes.gainNode.gain.value = (!shouldMute && rms > noiseGateThreshold) ? 1.0 : 0.0;
+
+        if (isMounted) {
+          animationFrameRef.current = requestAnimationFrame(processNoiseGate);
+        }
+      };
+
+      processNoiseGate();
+    }).catch((error) => {
+      console.error('Failed to create audio nodes with noise suppression:', error);
+      // Fallback: create basic audio nodes without noise suppression
+      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const source = audioContext.createMediaStreamSource(rawStream);
+      const analyser = audioContext.createAnalyser();
+      analyser.fftSize = 256;
+      analyser.smoothingTimeConstant = 0.3;
+      const gainNode = audioContext.createGain();
+      const destination = audioContext.createMediaStreamDestination();
+
+      source.connect(analyser);
+      source.connect(gainNode);
+      gainNode.connect(destination);
+
+      audioNodesRef.current = {
+        audioContext,
+        source,
+        workletNode: null,
+        analyser,
+        gainNode,
+        destination,
+      };
+
+      setLocalStream(destination.stream);
+
+      const dataArray = new Uint8Array(analyser.frequencyBinCount);
+      const processNoiseGate = () => {
+        if (audioContext.state === 'suspended') {
+          audioContext.resume().catch(console.error);
+        }
+        if (!analyser || !gainNode || audioContext?.state !== 'running' || !isMounted) {
+          if (isMounted) {
+            animationFrameRef.current = requestAnimationFrame(processNoiseGate);
+          }
+          return;
+        }
+        analyser.getByteFrequencyData(dataArray);
+        let sum = 0;
+        for (let i = 0; i < dataArray.length; i++) {
+          const normalized = dataArray[i] / 255;
+          sum += normalized * normalized;
+        }
+        const rms = Math.sqrt(sum / dataArray.length);
+        const shouldMute = isMuted || (pushToTalk && !isPressingPushToTalkKey);
+        gainNode.gain.value = (!shouldMute && rms > noiseGateThreshold) ? 1.0 : 0.0;
+        if (isMounted) {
+          animationFrameRef.current = requestAnimationFrame(processNoiseGate);
+        }
+      };
+      processNoiseGate();
+    });
 
     return () => {
+      isMounted = false;
       if (animationFrameRef.current) {
         cancelAnimationFrame(animationFrameRef.current);
       }
-      if (sourceNodeRef.current) {
-        sourceNodeRef.current.disconnect();
-      }
-      if (gainNodeRef.current) {
-        gainNodeRef.current.disconnect();
-      }
-      if (analyserRef.current) {
-        analyserRef.current.disconnect();
-      }
-      if (audioContext.state !== 'closed') {
-        audioContext.close();
+      if (audioNodesRef.current) {
+        cleanupNoiseSuppressionNodes(audioNodesRef.current, animationFrameRef.current);
+        audioNodesRef.current = null;
       }
     };
-  }, [rawStream, noiseGateThreshold, isMuted, pushToTalk, isPressingPushToTalkKey]);
+  }, [rawStream, noiseGateThreshold, isMuted, pushToTalk, isPressingPushToTalkKey, noiseSuppressionEnabled, noiseSuppressionIntensity]);
+
+  // Update noise suppression intensity when it changes
+  useEffect(() => {
+    if (audioNodesRef.current?.workletNode) {
+      updateNoiseSuppressionIntensity(audioNodesRef.current.workletNode, noiseSuppressionIntensity);
+    }
+  }, [noiseSuppressionIntensity]);
 
   // Update existing peer connections when localStream changes
   // This is especially important when noise gate threshold changes
@@ -635,6 +703,10 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
       setPushToTalkKey,
       remoteVoiceActivity,
       localVoiceActivity,
+      noiseSuppressionEnabled,
+      setNoiseSuppressionEnabled,
+      noiseSuppressionIntensity,
+      setNoiseSuppressionIntensity,
     }}>
       {children}
       {Object.entries(remoteStreams).map(([peerId, stream]) => (
