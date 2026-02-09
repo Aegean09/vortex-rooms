@@ -5,7 +5,7 @@ import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Sparkles, LogIn, Map, AudioLines, ImagePlus, Smartphone, Camera, Monitor, Paintbrush, CircleDot } from 'lucide-react';
+import { Sparkles, LogIn, Map, AudioLines, ImagePlus, Smartphone, Camera, Monitor, Paintbrush, CircleDot, LoaderCircle } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Badge } from '@/components/ui/badge';
 import { useAuth, useFirestore, useUser } from '@/firebase';
@@ -93,7 +93,7 @@ export default function HomePage() {
               </div>
               <div className="space-y-2">
                 {[
-                  { icon: AudioLines, label: 'Less Keyboard Noise', status: 'planned' as const },
+                  { icon: AudioLines, label: 'Less Keyboard Noise', status: 'in_progress' as const },
                   { icon: Paintbrush, label: 'Custom Themes', status: 'planned' as const },
                   { icon: Monitor, label: 'Screen Sharing', status: 'planned' as const },
                   { icon: Camera, label: 'Camera Sharing', status: 'planned' as const },
@@ -105,9 +105,9 @@ export default function HomePage() {
                       <feature.icon className="h-3.5 w-3.5 text-muted-foreground" />
                       <span className="text-xs font-medium">{feature.label}</span>
                     </div>
-                    <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-5 gap-1 font-normal text-muted-foreground border-muted-foreground/30">
-                      <CircleDot className="h-2.5 w-2.5" />
-                      Planned
+                    <Badge variant="outline" className={`text-[10px] px-1.5 py-0 h-5 gap-1 font-normal ${feature.status === 'in_progress' ? 'text-primary border-primary/40' : 'text-muted-foreground border-muted-foreground/30'}`}>
+                      {feature.status === 'in_progress' ? <LoaderCircle className="h-2.5 w-2.5 animate-spin" /> : <CircleDot className="h-2.5 w-2.5" />}
+                      {feature.status === 'in_progress' ? 'In Progress' : 'Planned'}
                     </Badge>
                   </div>
                 ))}
