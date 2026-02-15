@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -9,6 +9,13 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
 import {
   Map,
   AudioLines,
@@ -21,6 +28,7 @@ import {
   ImagePlus,
   ExternalLink,
 } from 'lucide-react';
+import { useIsMobile } from '@/hooks/use-mobile';
 
 const ROADMAP_FEATURES = [
   { icon: AudioLines, label: 'Less Keyboard Noise', status: 'in_progress' as const },
@@ -64,7 +72,7 @@ function RoadmapItem({ feature }: { feature: (typeof ROADMAP_FEATURES)[number] }
   );
 }
 
-function FullRoadmapTooltip() {
+function FullRoadmapContent() {
   return (
     <div className="space-y-2 p-1 min-w-[280px]">
       <div className="flex items-center gap-2 pb-1 border-b border-border/50">
@@ -80,7 +88,7 @@ function FullRoadmapTooltip() {
   );
 }
 
-export function RoadmapPopover() {
+function DesktopRoadmap() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const scrollPositionRef = useRef(0);
 
@@ -137,9 +145,53 @@ export function RoadmapPopover() {
           </div>
         </TooltipTrigger>
         <TooltipContent side="right" sideOffset={12} className="p-3">
-          <FullRoadmapTooltip />
+          <FullRoadmapContent />
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>
   );
+}
+
+function MobileRoadmap() {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="outline" className="mt-6 gap-2 text-xs border-primary/20">
+          <Map className="h-3.5 w-3.5" />
+          Roadmap
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 text-sm">
+            <Map className="h-4 w-4 text-primary" />
+            Roadmap
+          </DialogTitle>
+        </DialogHeader>
+        <div className="space-y-2">
+          {ROADMAP_FEATURES.map((feature) => (
+            <RoadmapItem key={feature.label} feature={feature} />
+          ))}
+        </div>
+        <a href={FEEDBACK_FORM_URL} target="_blank" rel="noopener noreferrer">
+          <Button variant="secondary" className="w-full text-xs gap-2 h-8">
+            <ExternalLink className="h-3 w-3" />
+            Feedback Form
+          </Button>
+        </a>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+export function RoadmapPopover() {
+  const isMobile = useIsMobile();
+
+  if (isMobile) {
+    return <MobileRoadmap />;
+  }
+
+  return <DesktopRoadmap />;
 }
