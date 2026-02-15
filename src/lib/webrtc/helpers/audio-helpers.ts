@@ -1,8 +1,11 @@
-import { loadRnnoise, RnnoiseWorkletNode } from '@sapphi-red/web-noise-suppressor';
-
 const RNNNOISE_WORKLET_URL = '/audio-worklets/rnnoise-worklet.js';
 const RNNNOISE_WASM_URL = '/audio-worklets/rnnoise.wasm';
 const RNNNOISE_SIMD_URL = '/audio-worklets/rnnoise_simd.wasm';
+
+const loadNoiseSuppressionModule = async () => {
+  const mod = await import('@sapphi-red/web-noise-suppressor');
+  return { loadRnnoise: mod.loadRnnoise, RnnoiseWorkletNode: mod.RnnoiseWorkletNode };
+};
 
 export interface NoiseGateConfig {
   threshold: number;
@@ -115,6 +118,7 @@ export const createAudioNodesWithNoiseSuppression = async (
 
   if (noiseSuppressionConfig.enabled) {
     try {
+      const { loadRnnoise, RnnoiseWorkletNode } = await loadNoiseSuppressionModule();
       const wasmBinary = await loadRnnoise({
         url: RNNNOISE_WASM_URL,
         simdUrl: RNNNOISE_SIMD_URL,
@@ -172,7 +176,7 @@ export const cleanupNoiseSuppressionNodes = (
   }
   if (nodes.workletNode) {
     if (typeof (nodes.workletNode as { destroy?: () => void }).destroy === 'function') {
-      (nodes.workletNode as RnnoiseWorkletNode).destroy();
+      (nodes.workletNode as { destroy: () => void }).destroy();
     }
     nodes.workletNode.disconnect();
   }
@@ -197,7 +201,7 @@ export const reconnectNoiseSuppressionOnExistingPipeline = async (
   nodes.source.disconnect();
   if (nodes.workletNode) {
     if (typeof (nodes.workletNode as { destroy?: () => void }).destroy === 'function') {
-      (nodes.workletNode as RnnoiseWorkletNode).destroy();
+      (nodes.workletNode as { destroy: () => void }).destroy();
     }
     nodes.workletNode.disconnect();
   }
@@ -206,6 +210,7 @@ export const reconnectNoiseSuppressionOnExistingPipeline = async (
 
   if (enabled) {
     try {
+      const { loadRnnoise, RnnoiseWorkletNode } = await loadNoiseSuppressionModule();
       const wasmBinary = await loadRnnoise({
         url: RNNNOISE_WASM_URL,
         simdUrl: RNNNOISE_SIMD_URL,

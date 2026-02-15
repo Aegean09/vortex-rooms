@@ -1,17 +1,18 @@
 "use client";
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
-import { Mic, MicOff, Headphones, PhoneOff, HeadphoneOff, ScreenShare, ScreenShareOff, Settings2, Radio, RefreshCw } from 'lucide-react';
+import { Mic, MicOff, Headphones, PhoneOff, HeadphoneOff, ScreenShare, ScreenShareOff, Settings2, Radio, RefreshCw, Shuffle, Pencil } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useRouter } from 'next/navigation';
 import { type User } from '@/interfaces/session';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { useToast } from '@/hooks/use-toast';
+import { DiceBearAvatar } from '@/components/dicebear-avatar/dicebear-avatar';
 import { cn } from '@/lib/utils';
 import { useWebRTC } from '@/lib/webrtc/provider';
+import { generateRandomSeed, generateAvatarSvg, AVATAR_PREVIEW_COUNT } from '@/helpers/avatar-helpers';
 import {
   Dialog,
   DialogContent,
@@ -33,9 +34,10 @@ import { getKeyDisplayName, rmsToPercent, percentToRms } from '@/helpers/audio-h
 
 interface VoiceControlsProps {
   currentUser: User | null;
+  onAvatarChange?: (newSeed: string) => void;
 }
 
-export function VoiceControls({ currentUser }: VoiceControlsProps) {
+export function VoiceControls({ currentUser, onAvatarChange }: VoiceControlsProps) {
   const {
     localStream,
     rawStream,
@@ -62,6 +64,8 @@ export function VoiceControls({ currentUser }: VoiceControlsProps) {
   const [voiceActivity, setVoiceActivity] = useState(false);
   const [currentLevel, setCurrentLevel] = useState(0);
   const [isRecordingKey, setIsRecordingKey] = useState(false);
+  const [isAvatarPickerOpen, setIsAvatarPickerOpen] = useState(false);
+  const [avatarOptions, setAvatarOptions] = useState<string[]>([]);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const animationFrameRef = useRef<number | undefined>(undefined);
 
@@ -181,6 +185,28 @@ export function VoiceControls({ currentUser }: VoiceControlsProps) {
     });
   };
 
+  const handleOpenAvatarPicker = useCallback(() => {
+    const seeds: string[] = [];
+    for (let i = 0; i < AVATAR_PREVIEW_COUNT; i++) {
+      seeds.push(generateRandomSeed());
+    }
+    setAvatarOptions(seeds);
+    setIsAvatarPickerOpen(true);
+  }, []);
+
+  const handleSelectAvatar = useCallback((seed: string) => {
+    onAvatarChange?.(seed);
+    setIsAvatarPickerOpen(false);
+  }, [onAvatarChange]);
+
+  const handleRefreshAvatarOptions = useCallback(() => {
+    const seeds: string[] = [];
+    for (let i = 0; i < AVATAR_PREVIEW_COUNT; i++) {
+      seeds.push(generateRandomSeed());
+    }
+    setAvatarOptions(seeds);
+  }, []);
+
   const handleDisconnect = () => {
     router.push('/');
   };
@@ -191,13 +217,18 @@ export function VoiceControls({ currentUser }: VoiceControlsProps) {
         <div className="flex items-center gap-3">
           {currentUser && (
             <>
-              <div className="relative">
-                <Avatar className={cn(
-                  "h-10 w-10 ring-2 ring-transparent transition-all duration-100",
-                  voiceActivity && !isMuted && "ring-green-500 ring-offset-2 ring-offset-card"
-                )}>
-                  <AvatarFallback>{currentUser.name.substring(0, 2).toUpperCase()}</AvatarFallback>
-                </Avatar>
+              <div className="relative cursor-pointer group" onClick={handleOpenAvatarPicker}>
+                <DiceBearAvatar
+                  seed={currentUser.avatarSeed || currentUser.name}
+                  size={40}
+                  className={cn(
+                    "ring-2 ring-transparent transition-all duration-100",
+                    voiceActivity && !isMuted && "ring-green-500 ring-offset-2 ring-offset-card"
+                  )}
+                />
+                <div className="absolute -bottom-0.5 -right-0.5 bg-primary text-primary-foreground rounded-full p-[3px] shadow-md transition-transform group-hover:scale-110">
+                  <Pencil className="h-2.5 w-2.5" />
+                </div>
               </div>
               <div>
                 <p className="font-semibold text-sm">{currentUser.name}</p>
@@ -457,6 +488,46 @@ export function VoiceControls({ currentUser }: VoiceControlsProps) {
           </Dialog>
         </div>
       </div>
+
+      <Dialog open={isAvatarPickerOpen} onOpenChange={setIsAvatarPickerOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Change Avatar</DialogTitle>
+            <DialogDescription>
+              Pick a new look for yourself
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid grid-cols-4 gap-3 py-4">
+            {avatarOptions.map((seed) => (
+              <button
+                key={seed}
+                type="button"
+                onClick={() => handleSelectAvatar(seed)}
+                className={cn(
+                  "rounded-full overflow-hidden ring-2 ring-transparent hover:ring-primary transition-all duration-150 hover:scale-110",
+                  currentUser?.avatarSeed === seed && "ring-primary ring-offset-2 ring-offset-background"
+                )}
+              >
+                <img
+                  src={generateAvatarSvg(seed)}
+                  alt="Avatar option"
+                  className="h-full w-full object-cover"
+                  draggable={false}
+                />
+              </button>
+            ))}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={handleRefreshAvatarOptions} className="gap-2">
+              <Shuffle className="h-3.5 w-3.5" />
+              Show More
+            </Button>
+            <DialogClose asChild>
+              <Button variant="secondary" size="sm">Cancel</Button>
+            </DialogClose>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </TooltipProvider>
   );
 }

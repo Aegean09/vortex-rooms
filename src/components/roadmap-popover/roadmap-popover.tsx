@@ -40,7 +40,7 @@ const ROADMAP_FEATURES = [
 ];
 
 const FEEDBACK_FORM_URL =
-  'https://docs.google.com/forms/d/e/1FAIpQLSc0mbNR7c_bUbiwCXuNSqsj3qDMr-VT-C8nWwPfpTwrJN_-Tw/viewform';
+  'https://docs.google.com/forms/d/e/1FAIpQLScxJzCQfdQK3UOnn0-56mPw5_trODnYxZmrRyBAoNtqTqMMkg/viewform';
 
 const SCROLL_SPEED = 0.15;
 const ITEM_HEIGHT = 44;

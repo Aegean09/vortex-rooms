@@ -14,6 +14,8 @@ interface UseSessionPresenceParams {
   authUser: FirebaseUser | null | undefined;
   sessionId: string;
   username: string | null;
+  avatarStyle?: string | null;
+  avatarSeed?: string | null;
 }
 
 export const useSessionPresence = ({
@@ -21,6 +23,8 @@ export const useSessionPresence = ({
   authUser,
   sessionId,
   username,
+  avatarStyle,
+  avatarSeed,
 }: UseSessionPresenceParams) => {
   const handleLeave = useCallback(async () => {
     if (!firestore || !authUser) {
@@ -49,18 +53,17 @@ export const useSessionPresence = ({
     }
 
     const userDocRef = doc(firestore, 'sessions', sessionId, 'users', authUser.uid);
-    setDoc(
-      userDocRef,
-      {
-        id: authUser.uid,
-        name: username,
-        sessionId,
-        subSessionId: 'general',
-        isScreenSharing: false,
-        isMuted: false,
-      },
-      { merge: true }
-    );
+    const userData: Record<string, unknown> = {
+      id: authUser.uid,
+      name: username,
+      sessionId,
+      subSessionId: 'general',
+      isScreenSharing: false,
+      isMuted: false,
+    };
+    if (avatarStyle) userData.avatarStyle = avatarStyle;
+    if (avatarSeed) userData.avatarSeed = avatarSeed;
+    setDoc(userDocRef, userData, { merge: true });
 
     window.addEventListener('beforeunload', handleLeave);
 

@@ -4,9 +4,9 @@ import React, { useEffect, useRef } from 'react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Send } from 'lucide-react';
 import { type Message } from '@/interfaces/session';
+import { DiceBearAvatar } from '@/components/dicebear-avatar/dicebear-avatar';
 
 interface ChatAreaProps {
   messages: Message[];
@@ -40,9 +40,10 @@ export function ChatArea({ messages, onSendMessage }: ChatAreaProps) {
         <div className="space-y-4">
           {messages.map((message) => (
             <div key={message.id} className="flex items-start gap-3">
-              <Avatar className="h-8 w-8">
-                <AvatarFallback>{message.user.name.substring(0, 2).toUpperCase()}</AvatarFallback>
-              </Avatar>
+              <DiceBearAvatar
+                seed={message.user.avatarSeed || message.user.name}
+                size={32}
+              />
               <div className="flex flex-col">
                 <div className="flex items-baseline gap-2">
                   <span className="font-semibold text-sm text-primary">{message.user.name}</span>

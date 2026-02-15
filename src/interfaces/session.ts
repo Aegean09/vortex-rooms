@@ -3,6 +3,8 @@ import { Timestamp } from 'firebase/firestore';
 export interface User {
   id: string;
   name: string;
+  avatarStyle?: string;
+  avatarSeed?: string;
   isMuted?: boolean;
   subSessionId?: string;
   isScreenSharing?: boolean;

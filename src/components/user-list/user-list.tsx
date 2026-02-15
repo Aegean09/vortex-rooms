@@ -1,11 +1,11 @@
 "use client";
 
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Card, CardContent } from '@/components/ui/card';
 import { useWebRTC } from '@/lib/webrtc/provider';
 import { cn } from '@/lib/utils';
 import { MicOff, HeadphoneOff } from 'lucide-react';
 import { type User } from '@/interfaces/session';
+import { DiceBearAvatar } from '@/components/dicebear-avatar/dicebear-avatar';
 
 interface UserListProps {
   users: User[];
@@ -34,14 +34,16 @@ export function UserList({ users, currentUser }: UserListProps) {
             return (
               <li key={user.id} className="flex items-center gap-3">
                 <div className="relative">
-                  <Avatar className={cn(
-                    "transition-all duration-200",
-                    isSpeaking && !userIsMuted && !userIsDeafened && "ring-2 ring-green-500 ring-offset-2 ring-offset-background",
-                    userIsMuted && "ring-2 ring-red-500 ring-offset-2 ring-offset-background",
-                    userIsDeafened && "ring-2 ring-orange-500 ring-offset-2 ring-offset-background"
-                  )}>
-                    <AvatarFallback>{user.name.substring(0, 2).toUpperCase()}</AvatarFallback>
-                  </Avatar>
+                  <DiceBearAvatar
+                    seed={user.avatarSeed || user.name}
+                    size={40}
+                    className={cn(
+                      "transition-all duration-200",
+                      isSpeaking && !userIsMuted && !userIsDeafened && "ring-2 ring-green-500 ring-offset-2 ring-offset-background",
+                      userIsMuted && "ring-2 ring-red-500 ring-offset-2 ring-offset-background",
+                      userIsDeafened && "ring-2 ring-orange-500 ring-offset-2 ring-offset-background"
+                    )}
+                  />
                   <span className={cn(
                     "absolute bottom-0 right-0 block h-3 w-3 rounded-full border-2 border-card transition-all duration-200",
                     isSpeaking && !userIsMuted && !userIsDeafened ? "bg-green-500 animate-pulse" :

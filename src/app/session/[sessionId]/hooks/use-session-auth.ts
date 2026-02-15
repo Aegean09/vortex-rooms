@@ -10,6 +10,8 @@ export const useSessionAuth = () => {
   const auth = useAuth();
   const { user: authUser, isUserLoading } = useUser();
   const [username, setUsername] = useState<string | null>(null);
+  const [avatarStyle, setAvatarStyle] = useState<string | null>(null);
+  const [avatarSeed, setAvatarSeed] = useState<string | null>(null);
 
   useEffect(() => {
     if (!sessionId) return;
@@ -24,6 +26,8 @@ export const useSessionAuth = () => {
       router.replace(`/session/${sessionId}/setup`);
     } else {
       setUsername(storedUsername);
+      setAvatarStyle(sessionStorage.getItem(`vortex-avatar-style-${sessionId}`));
+      setAvatarSeed(sessionStorage.getItem(`vortex-avatar-seed-${sessionId}`));
     }
   }, [sessionId, router]);
 
@@ -39,5 +43,7 @@ export const useSessionAuth = () => {
     authUser,
     isUserLoading,
     username,
+    avatarStyle,
+    avatarSeed,
   };
 };

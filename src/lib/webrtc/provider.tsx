@@ -24,6 +24,7 @@ import {
   reconnectNoiseSuppressionOnExistingPipeline,
   type NoiseSuppressionNodes,
 } from './helpers/audio-helpers';
+import { percentToRms } from '@/helpers/audio-helpers';
 
 interface WebRTCContextType {
   localStream: MediaStream | null;
@@ -94,12 +95,12 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
   const [screenShareStream, setScreenShareStream] = useState<MediaStream | null>(null);
   const screenShareTrackRef = useRef<MediaStreamTrack | null>(null);
   const [presenterId, setPresenterId] = useState<string | null>(null);
-  const [noiseGateThreshold, setNoiseGateThreshold] = useState<number>(() => Math.pow(10, (-60 + 40 * 0.6) / 20));
+  const [noiseGateThreshold, setNoiseGateThreshold] = useState<number>(() => percentToRms(65));
   const [pushToTalk, setPushToTalk] = useState<boolean>(false);
   const [pushToTalkKey, setPushToTalkKey] = useState<string>('Space');
   const [isPressingPushToTalkKey, setIsPressingPushToTalkKey] = useState<boolean>(false);
   const prevPushToTalkRef = useRef(false);
-  const [noiseSuppressionEnabled, setNoiseSuppressionEnabled] = useState<boolean>(true);
+  const [noiseSuppressionEnabled, setNoiseSuppressionEnabled] = useState<boolean>(false);
   const [noiseSuppressionIntensity, setNoiseSuppressionIntensity] = useState<number>(1);
   const [audioInputDevices, setAudioInputDevices] = useState<MediaDeviceInfo[]>([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState<string>('');
@@ -490,6 +491,19 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
       }
     };
   }, [rawStream, startNoiseGateLoop]);
+
+  const hasAutoEnabledNoiseSuppression = useRef(false);
+
+  useEffect(() => {
+    if (!localStream || !audioNodesRef.current || hasAutoEnabledNoiseSuppression.current) return;
+
+    const timeoutId = setTimeout(() => {
+      hasAutoEnabledNoiseSuppression.current = true;
+      setNoiseSuppressionEnabled(true);
+    }, 1000);
+
+    return () => clearTimeout(timeoutId);
+  }, [localStream]);
 
   useEffect(() => {
     if (!audioNodesRef.current) return;

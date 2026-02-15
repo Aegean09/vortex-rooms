@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useCallback, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { ChatArea } from '@/components/chat-area/chat-area';
 import { SubSessionList } from '@/components/subsession-list/subsession-list';
@@ -21,6 +21,7 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { cn } from '@/lib/utils';
+import { doc, updateDoc } from 'firebase/firestore';
 import {
   useSessionAuth,
   useSessionData,
@@ -42,7 +43,7 @@ const VoiceControls = dynamic(
 );
 
 export default function SessionPage() {
-  const { sessionId, authUser, isUserLoading, username } = useSessionAuth();
+  const { sessionId, authUser, isUserLoading, username, avatarStyle, avatarSeed } = useSessionAuth();
 
   const {
     firestore,
@@ -60,7 +61,7 @@ export default function SessionPage() {
     isSomeoneScreenSharing,
   } = useSessionData(sessionId, authUser);
 
-  useSessionPresence({ firestore, authUser, sessionId, username });
+  useSessionPresence({ firestore, authUser, sessionId, username, avatarStyle, avatarSeed });
 
   useJoinSound({ users, subSessionsData, currentUser });
 
@@ -82,12 +83,30 @@ export default function SessionPage() {
     sessionId,
   });
 
+  const [localAvatarSeed, setLocalAvatarSeed] = useState<string | null>(null);
+
+  const effectiveAvatarSeed = localAvatarSeed ?? avatarSeed;
+
   const currentUserForUI: User | null = useMemo(() => {
     if (authUser && username) {
-      return { id: authUser.uid, name: username };
+      return {
+        id: authUser.uid,
+        name: username,
+        avatarStyle: avatarStyle ?? undefined,
+        avatarSeed: effectiveAvatarSeed ?? undefined,
+      };
     }
     return null;
-  }, [authUser, username]);
+  }, [authUser, username, avatarStyle, effectiveAvatarSeed]);
+
+  const handleAvatarChange = useCallback((newSeed: string) => {
+    setLocalAvatarSeed(newSeed);
+    sessionStorage.setItem(`vortex-avatar-seed-${sessionId}`, newSeed);
+    if (firestore && authUser) {
+      const userDocRef = doc(firestore, 'sessions', sessionId, 'users', authUser.uid);
+      updateDoc(userDocRef, { avatarSeed: newSeed }).catch(console.error);
+    }
+  }, [firestore, authUser, sessionId]);
 
   if (isUserLoading || usersLoading || isSubSessionsLoading || !username || !authUser || !sessionData && isSessionLoading) {
     return <SessionLoader />;
@@ -156,7 +175,7 @@ export default function SessionPage() {
             )}
             <div className="hidden md:flex items-center justify-start gap-4">
               <div className="flex-grow">
-                <VoiceControls currentUser={currentUserForUI} />
+                <VoiceControls currentUser={currentUserForUI} onAvatarChange={handleAvatarChange} />
               </div>
               <div className="w-[80px] h-[80px] flex-shrink-0"></div>
             </div>
@@ -166,7 +185,7 @@ export default function SessionPage() {
         <footer className="block md:hidden">
           <div className="flex items-center justify-start gap-4">
             <div className="flex-grow">
-              <VoiceControls currentUser={currentUserForUI} />
+              <VoiceControls currentUser={currentUserForUI} onAvatarChange={handleAvatarChange} />
             </div>
           </div>
         </footer>

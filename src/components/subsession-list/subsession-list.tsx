@@ -2,10 +2,10 @@
 
 import React, { useMemo, useState, useEffect } from 'react';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Volume2, Users, Plus, MicOff, HeadphoneOff } from 'lucide-react';
+import { DiceBearAvatar } from '@/components/dicebear-avatar/dicebear-avatar';
 import { type User, type SubSession } from '@/interfaces/session';
-import { MAX_USERS_PER_SUB_SESSION } from '@/constants/common';
+// import { MAX_USERS_PER_SUB_SESSION } from '@/constants/common';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
@@ -53,8 +53,8 @@ export function SubSessionList({ subSessions, users, currentUser, onSubSessionCh
   }, [users, subSessions]);
 
   const handleJoinChannel = (subSessionId: string) => {
-    const count = (usersBySubSession[subSessionId] || []).length;
-    if (count >= MAX_USERS_PER_SUB_SESSION) return;
+    // const count = (usersBySubSession[subSessionId] || []).length;
+    // if (count >= MAX_USERS_PER_SUB_SESSION) return;
     onSubSessionChange(subSessionId);
     if (!openItems.includes(subSessionId)) {
       setOpenItems(prev => [...prev, subSessionId]);
@@ -119,8 +119,9 @@ export function SubSessionList({ subSessions, users, currentUser, onSubSessionCh
         {subSessions.map((subSession) => {
           const sessionUsers = usersBySubSession[subSession.id] || [];
           const isCurrentUserInSession = currentUser?.subSessionId === subSession.id;
-          const isFull = sessionUsers.length >= MAX_USERS_PER_SUB_SESSION;
-          const countLabel = `${sessionUsers.length}/${MAX_USERS_PER_SUB_SESSION}`;
+          // const isFull = sessionUsers.length >= MAX_USERS_PER_SUB_SESSION;
+          // const countLabel = `${sessionUsers.length}/${MAX_USERS_PER_SUB_SESSION}`;
+          const countLabel = `${sessionUsers.length}`;
 
           return (
             <AccordionItem value={subSession.id} key={subSession.id} className="border-b-0">
@@ -142,19 +143,18 @@ export function SubSessionList({ subSessions, users, currentUser, onSubSessionCh
                     </span>
                   </div>
                 </AccordionTrigger>
+                {/* disabled={isFull} title={isFull ? `Room full (${countLabel})` : undefined} */}
                 {!isCurrentUserInSession && (
                   <Button
                     variant="secondary"
                     size="sm"
                     className="h-6 px-2"
-                    disabled={isFull}
-                    title={isFull ? `Room full (${countLabel})` : undefined}
                     onClick={(e) => {
                       e.stopPropagation();
                       handleJoinChannel(subSession.id);
                     }}
                   >
-                    {isFull ? 'Full' : 'Join'}
+                    Join
                   </Button>
                 )}
               </div>
@@ -175,14 +175,16 @@ export function SubSessionList({ subSessions, users, currentUser, onSubSessionCh
                     return (
                       <li key={user.id} className="flex items-center gap-3">
                         <div className="relative">
-                          <Avatar className={cn(
-                            "h-8 w-8 transition-all duration-200",
-                            isSpeaking && !userIsMuted && !userIsDeafened && "ring-2 ring-green-500 ring-offset-2 ring-offset-background",
-                            userIsMuted && "ring-2 ring-red-500 ring-offset-2 ring-offset-background",
-                            userIsDeafened && "ring-2 ring-orange-500 ring-offset-2 ring-offset-background"
-                          )}>
-                            <AvatarFallback>{user.name.substring(0, 2).toUpperCase()}</AvatarFallback>
-                          </Avatar>
+                          <DiceBearAvatar
+                            seed={user.avatarSeed || user.name}
+                            size={32}
+                            className={cn(
+                              "transition-all duration-200",
+                              isSpeaking && !userIsMuted && !userIsDeafened && "ring-2 ring-green-500 ring-offset-2 ring-offset-background",
+                              userIsMuted && "ring-2 ring-red-500 ring-offset-2 ring-offset-background",
+                              userIsDeafened && "ring-2 ring-orange-500 ring-offset-2 ring-offset-background"
+                            )}
+                          />
                           <span className={cn(
                             "absolute bottom-0 right-0 block h-2.5 w-2.5 rounded-full border-2 border-card transition-all duration-200",
                             isSpeaking && !userIsMuted && !userIsDeafened ? "bg-green-500 animate-pulse" :

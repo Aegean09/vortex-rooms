@@ -13,6 +13,7 @@ import { ArrowLeft, User as UserIcon, Mic, AlertCircle, Lock, Users, Settings2, 
 import { useToast } from '@/hooks/use-toast';
 import { Progress } from '@/components/ui/progress';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { generateRandomSeed, AVATAR_STYLE } from '@/helpers/avatar-helpers';
 
 type RoomType = 'default' | 'custom';
 
@@ -24,6 +25,7 @@ export default function SetupPage() {
   const firestore = useFirestore();
   const { user: authUser, isUserLoading } = useUser();
   const [nameInput, setNameInput] = useState('');
+  const [avatarSeed] = useState<string>(() => generateRandomSeed());
   const [roomType, setRoomType] = useState<RoomType>('default');
   const [password, setPassword] = useState('');
   const [maxUsers, setMaxUsers] = useState('');
@@ -175,6 +177,8 @@ export default function SetupPage() {
     cleanupAudio();
 
     sessionStorage.setItem(`vortex-username-${sessionId}`, nameInput.trim());
+    sessionStorage.setItem(`vortex-avatar-style-${sessionId}`, AVATAR_STYLE);
+    sessionStorage.setItem(`vortex-avatar-seed-${sessionId}`, avatarSeed);
 
     const sessionDocRef = doc(firestore, 'sessions', sessionId);
     const newSessionData: any = {
