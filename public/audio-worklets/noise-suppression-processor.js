@@ -50,14 +50,19 @@ class NoiseSuppressionProcessor extends AudioWorkletProcessor {
     this.spectralCentroid = 0;
     this.spectralRolloff = 0;
     
-    // Smoothing for gain adjustments
-    this.currentGain = 1.0;
-    this.targetGain = 1.0;
-    this.smoothingFactor = 0.15; // Slightly slower for smoother transitions
+    // Smoothing for gain adjustments (reduced to avoid double-modulation crackling)
+    this.smoothingFactor = 0.25;
     
     // Wiener filter parameters
-    this.wienerSmoothing = 0.9; // Smoothing factor for Wiener gain
+    this.wienerSmoothing = 0.92; // Smoother to reduce musical noise / hiss
     this.wienerGainHistory = new Float32Array(128);
+    
+    // Transient detection for keyboard / clicks (short, sharp attacks)
+    this.frameRmsHistory = new Float32Array(8);
+    this.frameRmsIndex = 0;
+    this.transientAttackRatio = 1.7;
+    this.transientGain = 0.35;
+    this.transientHoldFrames = 0; // After detecting transient, keep attenuating for N frames
     
     // Port message handler
     this.port.onmessage = (event) => {
@@ -69,6 +74,8 @@ class NoiseSuppressionProcessor extends AudioWorkletProcessor {
         this.noiseProfile.fill(0);
         this.noiseProfileVariance.fill(0);
         this.framesSinceNoiseUpdate = 0;
+        this.transientHoldFrames = 0;
+        this.frameRmsHistory.fill(0);
       } else if (event.data.type === 'setSampleRate') {
         this.sampleRate = event.data.sampleRate || 48000;
       }
@@ -244,94 +251,95 @@ class NoiseSuppressionProcessor extends AudioWorkletProcessor {
    * Provides better SNR estimation than simple spectral subtraction
    */
   calculateWienerGain(signalPower, noisePower, noiseVariance) {
-    // Wiener filter: H = S^2 / (S^2 + N^2)
-    // Where S^2 is signal power, N^2 is noise power
-    
     const snr = noisePower > 0 ? signalPower / noisePower : 10;
     const snrSquared = snr * snr;
-    
-    // Wiener gain with smoothing to prevent musical noise
     const wienerGain = snrSquared / (snrSquared + 1.0);
-    
-    // Apply spectral floor to prevent over-suppression
-    const minGain = 0.1;
+    // At high intensity allow stronger suppression (lower floor) to cut keyboard noise
+    const minGain = this.intensity > 0.6 ? 0.04 : 0.1;
     return Math.max(minGain, wienerGain);
   }
   
   /**
-   * Apply enhanced noise suppression with Wiener filter and multi-band processing
+   * Detect transient (keyboard click, tap) - short sharp attack. Returns true for current frame or hold.
+   */
+  isTransientFrame(buffer) {
+    const rms = this.calculateRMS(buffer);
+    this.frameRmsHistory[this.frameRmsIndex] = rms;
+    this.frameRmsIndex = (this.frameRmsIndex + 1) % this.frameRmsHistory.length;
+    if (this.transientHoldFrames > 0) {
+      this.transientHoldFrames--;
+      return true;
+    }
+    const recentAvg = this.frameRmsHistory.reduce((a, b) => a + b, 0) / this.frameRmsHistory.length;
+    if (recentAvg < 1e-6) return false;
+    const ratio = rms / recentAvg;
+    if (ratio >= this.transientAttackRatio) {
+      this.transientHoldFrames = 2; // Attenuate next 2 frames too (full click)
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * Apply enhanced noise suppression with Wiener filter and strong transient (keyboard) suppression
    */
   applyNoiseSuppression(buffer) {
     const output = new Float32Array(buffer.length);
     const rms = this.calculateRMS(buffer);
     const isVoiceActive = this.detectVoiceActivity(buffer);
-    
-    // Calculate average noise estimate
-    const avgNoisePower = this.noiseProfile.reduce((a, b) => a + b * b, 0) / this.noiseProfile.length;
-    const avgNoiseVariance = this.noiseProfileVariance.reduce((a, b) => a + b, 0) / this.noiseProfileVariance.length;
-    
-    // Spectral subtraction parameters (adaptive based on intensity)
-    const alpha = 1.5 + (this.intensity * 1.5); // 1.5 to 3.0
-    const beta = 0.01 + (this.intensity * 0.04); // 0.01 to 0.05 (spectral floor)
-    
+    const isTransient = this.isTransientFrame(buffer);
+
+    // Intensity curve: high end (0.6–1.0) much more aggressive for keyboard
+    const aggressive = this.intensity * this.intensity; // e.g. 0.8 -> 0.64, 1.0 -> 1.0
+    const veryAggressive = this.intensity > 0.6 ? (this.intensity - 0.6) / 0.4 : 0; // 0 at 0.6, 1 at 1.0
+
+    // Spectral floor: at high intensity allow more suppression (lower floor)
+    const beta = Math.max(0.008, 0.05 - veryAggressive * 0.042); // 0.05 down to ~0.008 at max
+
     for (let i = 0; i < buffer.length; i++) {
       const sample = buffer[i];
-      const absSample = Math.abs(sample);
       const samplePower = sample * sample;
-      
-      // Get frequency band for this sample
-      const band = this.getFrequencyBand(i, buffer.length);
-      
-      // Get noise estimate for this frequency
+
       const noiseEstimate = this.noiseProfile[Math.min(i, this.noiseProfile.length - 1)];
       const noiseVariance = this.noiseProfileVariance[Math.min(i, this.noiseProfileVariance.length - 1)];
       const noisePower = noiseEstimate * noiseEstimate;
-      
-      // Calculate SNR
-      const snr = noisePower > 0 ? samplePower / noisePower : 10;
-      
-      // Wiener filter gain
+
       let wienerGain = this.calculateWienerGain(samplePower, noisePower, noiseVariance);
-      
-      // Smooth Wiener gain to prevent musical noise
-      const prevGain = this.wienerGainHistory[i] || wienerGain;
+
+      const prevGain = this.wienerGainHistory[i] !== undefined ? this.wienerGainHistory[i] : wienerGain;
       wienerGain = this.wienerSmoothing * prevGain + (1 - this.wienerSmoothing) * wienerGain;
       this.wienerGainHistory[i] = wienerGain;
-      
-      // Multi-band processing: apply different suppression based on frequency
-      let bandSuppressionFactor = 1.0;
-      
-      if (snr < 1.5) {
-        // Low SNR - likely noise
-        bandSuppressionFactor = Math.max(beta, 1.0 - (this.intensity * 0.9 * band.weight));
-      } else if (snr < 3.0) {
-        // Medium SNR - partial suppression
-        bandSuppressionFactor = Math.max(beta, 1.0 - (this.intensity * 0.6 * band.weight));
+
+      const snr = noisePower > 0 ? samplePower / noisePower : 10;
+
+      // Stronger suppression at high intensity, especially for low SNR (noise)
+      let suppressionFactor = 1.0;
+      if (snr < 1.2) {
+        suppressionFactor = Math.max(beta, 1.0 - (aggressive * 0.95));
+      } else if (snr < 2.5) {
+        suppressionFactor = Math.max(beta, 1.0 - (aggressive * 0.75));
+      } else if (snr < 4.0) {
+        suppressionFactor = Math.max(beta, 1.0 - (aggressive * 0.45));
       } else {
-        // High SNR - likely voice, minimal suppression
-        bandSuppressionFactor = Math.max(0.6, 1.0 - (this.intensity * 0.3 * band.weight));
+        suppressionFactor = Math.max(0.5, 1.0 - (aggressive * 0.25));
       }
-      
-      // Combine Wiener filter with spectral subtraction
-      // Wiener provides optimal gain, spectral subtraction provides additional control
-      let finalGain = wienerGain * bandSuppressionFactor;
-      
-      // Apply voice activity boost (preserve voice more)
+
+      let finalGain = wienerGain * suppressionFactor;
+
+      // Transient (keyboard) suppression: extra attenuation on sharp attacks when not clear voice
+      if (isTransient && !(isVoiceActive && rms > this.voiceThreshold * 3)) {
+        const transientAtten = 1.0 - (veryAggressive * (1.0 - this.transientGain));
+        finalGain *= transientAtten;
+      }
+
       if (isVoiceActive && rms > this.voiceThreshold * 2) {
-        // Boost voice frequencies more
-        if (band.name === 'mid' || band.name === 'high-mid') {
-          finalGain = Math.min(1.0, finalGain * 1.15);
-        } else {
-          finalGain = Math.min(1.0, finalGain * 1.05);
-        }
+        finalGain = Math.min(1.0, finalGain * 1.08);
       }
-      
-      // Ensure minimum gain to prevent complete silence
-      finalGain = Math.max(0.05, finalGain);
-      
+
+      finalGain = Math.max(0.04, finalGain);
       output[i] = sample * finalGain;
     }
-    
+
     return output;
   }
   
@@ -372,23 +380,12 @@ class NoiseSuppressionProcessor extends AudioWorkletProcessor {
     
     // Apply enhanced noise suppression
     const suppressed = this.applyNoiseSuppression(buffer);
-    
-    // Smooth gain transitions (prevent clicks/pops)
-    const avgSuppressed = suppressed.reduce((a, b) => Math.abs(a) + Math.abs(b), 0) / suppressed.length;
-    const avgOriginal = buffer.reduce((a, b) => Math.abs(a) + Math.abs(b), 0) / buffer.length;
-    
-    if (avgOriginal > 0) {
-      this.targetGain = Math.min(1.0, avgSuppressed / avgOriginal);
-    }
-    
-    // Smooth gain transitions
-    this.currentGain += (this.targetGain - this.currentGain) * this.smoothingFactor;
-    
-    // Apply to output
+
+    // Output directly to avoid double gain modulation (reduces crackling/hiss)
     for (let i = 0; i < outputChannel.length; i++) {
-      outputChannel[i] = suppressed[i] * this.currentGain;
+      outputChannel[i] = suppressed[i];
     }
-    
+
     return true;
   }
 }

@@ -346,52 +346,24 @@ export function VoiceControls({ currentUser }: VoiceControlsProps) {
                   </div>
                 </div>
 
-                {/* Noise Suppression - Temporarily hidden */}
-                {false && (
-                  <div className="space-y-3 pt-2 border-t">
-                    <div className="flex items-center justify-between">
-                      <div className="space-y-0.5">
-                        <Label htmlFor="noise-suppression" className="text-sm font-medium">
-                          Noise Suppression
-                        </Label>
-                        <p className="text-xs text-muted-foreground">
-                          Reduces background noise while you speak (like keyboard clicks, fan noise)
-                        </p>
-                      </div>
-                      <Switch
-                        id="noise-suppression"
-                        checked={noiseSuppressionEnabled}
-                        onCheckedChange={setNoiseSuppressionEnabled}
-                      />
+                {/* Noise Suppression - On/Off only */}
+                <div className="space-y-3 pt-2 border-t">
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-0.5">
+                      <Label htmlFor="noise-suppression" className="text-sm font-medium">
+                        Noise Suppression
+                      </Label>
+                      <p className="text-xs text-muted-foreground">
+                        Reduces background noise (keyboard, fan). On or off.
+                      </p>
                     </div>
-                    {noiseSuppressionEnabled && (
-                      <div className="space-y-3">
-                        <div className="flex justify-between text-xs">
-                          <span className="text-muted-foreground">Intensity</span>
-                          <span className="font-mono text-primary">
-                            {noiseSuppressionIntensity === 0 ? 'Low' : 
-                             noiseSuppressionIntensity <= 0.5 ? 'Medium' : 'High'}
-                          </span>
-                        </div>
-                        <Slider
-                          value={[noiseSuppressionIntensity * 100]}
-                          onValueChange={([value]) => {
-                            setNoiseSuppressionIntensity(value / 100);
-                          }}
-                          min={0}
-                          max={100}
-                          step={1}
-                          className="w-full"
-                        />
-                        <div className="flex justify-between text-[10px] text-muted-foreground">
-                          <span>Low</span>
-                          <span>Medium</span>
-                          <span>High</span>
-                        </div>
-                      </div>
-                    )}
+                    <Switch
+                      id="noise-suppression"
+                      checked={noiseSuppressionEnabled}
+                      onCheckedChange={setNoiseSuppressionEnabled}
+                    />
                   </div>
-                )}
+                </div>
 
                 {/* Push to Talk - Only on Desktop */}
                 {!isMobile && (
