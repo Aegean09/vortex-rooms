@@ -1,7 +1,3 @@
-/**
- * Peer connection service for managing WebRTC connections
- */
-
 import { Firestore } from 'firebase/firestore';
 import { createPeerConnection, createOffer, handleOffer } from '../webrtc';
 import { PeerConnectionWithUnsubscribe, OnTrackCallback } from '../types';
@@ -16,12 +12,9 @@ export interface CreateConnectionParams {
   onDisconnect: () => void;
 }
 
-/**
- * Creates a new peer connection
- */
 export const createConnection = (params: CreateConnectionParams): PeerConnectionWithUnsubscribe => {
   const { firestore, sessionId, localPeerId, remotePeerId, onTrack, onDisconnect } = params;
-  
+
   return createPeerConnection(
     firestore,
     sessionId,
@@ -32,9 +25,6 @@ export const createConnection = (params: CreateConnectionParams): PeerConnection
   );
 };
 
-/**
- * Adds local stream tracks to peer connection
- */
 export const addLocalTracksToPeer = (
   pc: RTCPeerConnection,
   localStream: MediaStream
@@ -44,9 +34,6 @@ export const addLocalTracksToPeer = (
   });
 };
 
-/**
- * Updates peer connection with new local stream tracks
- */
 export const updatePeerConnectionTracks = async (
   pc: RTCPeerConnection,
   localStream: MediaStream,
@@ -60,19 +47,14 @@ export const updatePeerConnectionTracks = async (
   );
   const newAudioTracks = localStream.getAudioTracks();
 
-  if (newAudioTracks.length === 0) {
-    console.warn(`No audio tracks in localStream for peer ${remotePeerId}`);
-    return;
-  }
+  if (newAudioTracks.length === 0) return;
 
   if (audioSenders.length > 0) {
-    // Replace existing tracks
     for (let i = 0; i < Math.min(audioSenders.length, newAudioTracks.length); i++) {
       const sender = audioSenders[i];
       const newTrack = newAudioTracks[i];
-      
+
       if (sender.track?.id !== newTrack.id) {
-        console.log(`Replacing audio track for peer ${remotePeerId}`);
         try {
           await sender.replaceTrack(newTrack);
         } catch (e) {
@@ -81,8 +63,6 @@ export const updatePeerConnectionTracks = async (
       }
     }
   } else {
-    // Add new tracks
-    console.log(`Adding audio tracks to peer ${remotePeerId}`);
     newAudioTracks.forEach(track => {
       pc.addTrack(track, localStream);
     });
@@ -90,9 +70,6 @@ export const updatePeerConnectionTracks = async (
   }
 };
 
-/**
- * Cleans up a peer connection completely
- */
 export const cleanupConnection = async (
   peerConnections: React.MutableRefObject<Record<string, PeerConnectionWithUnsubscribe>>,
   peerId: string,
@@ -113,4 +90,3 @@ export const cleanupConnection = async (
     await cleanupFirestoreCall(firestore, sessionId, localPeerId, peerId);
   }
 };
-

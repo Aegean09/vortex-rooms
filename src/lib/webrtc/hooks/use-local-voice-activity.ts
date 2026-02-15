@@ -33,41 +33,37 @@ export const useLocalVoiceActivity = (params: UseLocalVoiceActivityParams): bool
 
     const analyser = audioContext.createAnalyser();
     analyser.fftSize = 256;
-    analyser.smoothingTimeConstant = 0.8; // Increased for smoother detection
+    analyser.smoothingTimeConstant = 0.8;
     analyserRef.current = analyser;
 
     source.connect(analyser);
 
     const dataArray = new Uint8Array(analyser.frequencyBinCount);
-    
-    // Debounce thresholds: need multiple frames to change state
-    const ACTIVATION_FRAMES = 3; // Need 3 frames to activate
-    const DEACTIVATION_FRAMES = 8; // Need 8 frames to deactivate (longer to prevent flickering)
+
+    const ACTIVATION_FRAMES = 3;
+    const DEACTIVATION_FRAMES = 8;
 
     const checkVoiceActivity = () => {
-      // Resume AudioContext if suspended (happens when tab goes to background)
       if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
         audioContextRef.current.resume().catch(console.error);
       }
-      
+
       if (analyserRef.current && !isMuted && audioContextRef.current?.state === 'running') {
         analyserRef.current.getByteFrequencyData(dataArray);
         const rms = calculateRMS(dataArray);
         const isAboveThreshold = rms > threshold;
-        
+
         if (isAboveThreshold) {
           consecutiveActiveFramesRef.current++;
           consecutiveInactiveFramesRef.current = 0;
-          
-          // Only set active after multiple consecutive frames
+
           if (consecutiveActiveFramesRef.current >= ACTIVATION_FRAMES) {
             setIsActive(true);
           }
         } else {
           consecutiveInactiveFramesRef.current++;
           consecutiveActiveFramesRef.current = 0;
-          
-          // Only set inactive after multiple consecutive frames
+
           if (consecutiveInactiveFramesRef.current >= DEACTIVATION_FRAMES) {
             setIsActive(false);
           }
@@ -97,4 +93,3 @@ export const useLocalVoiceActivity = (params: UseLocalVoiceActivityParams): bool
 
   return isActive;
 };
-

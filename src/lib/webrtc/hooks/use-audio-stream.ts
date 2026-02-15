@@ -9,17 +9,16 @@ export interface UseAudioStreamReturn {
   noiseGateThreshold: number;
 }
 
-const DEFAULT_THRESHOLD = 0.126; // %70
+const DEFAULT_THRESHOLD = 0.126;
 
 export const useAudioStream = (userId: string | null): UseAudioStreamReturn => {
   const [rawStream, setRawStream] = useState<MediaStream | null>(null);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [noiseGateThreshold, setNoiseGateThreshold] = useState<number>(DEFAULT_THRESHOLD);
-  
+
   const audioNodesRef = useRef<AudioNodes | null>(null);
   const animationFrameRef = useRef<number | undefined>(undefined);
 
-  // Get user media
   useEffect(() => {
     if (!userId) return;
 
@@ -41,14 +40,12 @@ export const useAudioStream = (userId: string | null): UseAudioStreamReturn => {
     };
   }, [userId]);
 
-  // Process audio with noise gate
   useEffect(() => {
     if (!rawStream || rawStream.getAudioTracks().length === 0) {
       setLocalStream(null);
       return;
     }
 
-    // Cleanup previous nodes
     if (animationFrameRef.current) {
       cancelAnimationFrame(animationFrameRef.current);
     }
@@ -56,17 +53,14 @@ export const useAudioStream = (userId: string | null): UseAudioStreamReturn => {
       cleanupAudioNodes(audioNodesRef.current, animationFrameRef.current);
     }
 
-    // Create new audio nodes
     const nodes = createAudioNodes(rawStream, {
       threshold: noiseGateThreshold,
     });
     audioNodesRef.current = nodes;
 
-    // Create processed stream
     const processedStream = nodes.destination.stream;
     setLocalStream(processedStream);
 
-    // Start noise gate processing
     const processFrame = () => {
       if (nodes.analyser && nodes.gainNode) {
         animationFrameRef.current = processNoiseGate(
@@ -94,4 +88,3 @@ export const useAudioStream = (userId: string | null): UseAudioStreamReturn => {
     setNoiseGateThreshold,
   };
 };
-

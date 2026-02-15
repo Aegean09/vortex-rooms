@@ -1,0 +1,145 @@
+'use client';
+
+import { useEffect, useRef } from 'react';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
+import {
+  Map,
+  AudioLines,
+  Smartphone,
+  Camera,
+  Monitor,
+  Paintbrush,
+  CircleDot,
+  LoaderCircle,
+  ImagePlus,
+  ExternalLink,
+} from 'lucide-react';
+
+const ROADMAP_FEATURES = [
+  { icon: AudioLines, label: 'Less Keyboard Noise', status: 'in_progress' as const },
+  { icon: Paintbrush, label: 'Custom Themes', status: 'planned' as const },
+  { icon: Monitor, label: 'Screen Sharing', status: 'planned' as const },
+  { icon: Camera, label: 'Camera Sharing', status: 'planned' as const },
+  { icon: ImagePlus, label: 'Photo Sharing in Chat', status: 'planned' as const },
+  { icon: Smartphone, label: 'Mobile App', status: 'planned' as const },
+];
+
+const FEEDBACK_FORM_URL =
+  'https://docs.google.com/forms/d/e/1FAIpQLSc0mbNR7c_bUbiwCXuNSqsj3qDMr-VT-C8nWwPfpTwrJN_-Tw/viewform';
+
+const SCROLL_SPEED = 0.15;
+const ITEM_HEIGHT = 44;
+const VISIBLE_ITEMS = 1;
+
+function RoadmapItem({ feature }: { feature: (typeof ROADMAP_FEATURES)[number] }) {
+  return (
+    <div className="flex items-center justify-between gap-2 rounded-lg border border-border/50 bg-muted/30 px-3 py-1.5 h-[36px] shrink-0">
+      <div className="flex items-center gap-2.5">
+        <feature.icon className="h-3.5 w-3.5 text-muted-foreground" />
+        <span className="text-xs font-medium">{feature.label}</span>
+      </div>
+      <Badge
+        variant="outline"
+        className={`text-[10px] px-1.5 py-0 h-5 gap-1 font-normal ${
+          feature.status === 'in_progress'
+            ? 'text-primary border-primary/40'
+            : 'text-muted-foreground border-muted-foreground/30'
+        }`}
+      >
+        {feature.status === 'in_progress' ? (
+          <LoaderCircle className="h-2.5 w-2.5 animate-spin" />
+        ) : (
+          <CircleDot className="h-2.5 w-2.5" />
+        )}
+        {feature.status === 'in_progress' ? 'In Progress' : 'Planned'}
+      </Badge>
+    </div>
+  );
+}
+
+function FullRoadmapTooltip() {
+  return (
+    <div className="space-y-2 p-1 min-w-[280px]">
+      <div className="flex items-center gap-2 pb-1 border-b border-border/50">
+        <Map className="h-3.5 w-3.5 text-primary" />
+        <span className="font-semibold text-xs">Full Roadmap</span>
+      </div>
+      <div className="space-y-1.5">
+        {ROADMAP_FEATURES.map((feature) => (
+          <RoadmapItem key={feature.label} feature={feature} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export function RoadmapPopover() {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const scrollPositionRef = useRef(0);
+
+  const duplicatedFeatures = [...ROADMAP_FEATURES, ...ROADMAP_FEATURES];
+
+  useEffect(() => {
+    const scrollContainer = scrollRef.current;
+    if (!scrollContainer) return;
+
+    let animationId: number;
+    const totalHeight = ROADMAP_FEATURES.length * ITEM_HEIGHT;
+
+    const animate = () => {
+      scrollPositionRef.current += SCROLL_SPEED;
+
+      if (scrollPositionRef.current >= totalHeight) {
+        scrollPositionRef.current -= totalHeight;
+      }
+
+      scrollContainer.scrollTop = scrollPositionRef.current;
+      animationId = requestAnimationFrame(animate);
+    };
+
+    animationId = requestAnimationFrame(animate);
+
+    return () => cancelAnimationFrame(animationId);
+  }, []);
+
+  return (
+    <TooltipProvider delayDuration={300}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <div className="w-full max-w-md mt-6 cursor-pointer">
+            <div className="rounded-xl border border-primary/20 bg-card/80 backdrop-blur-sm overflow-hidden pt-[9px]">
+              <div
+                ref={scrollRef}
+                className="overflow-hidden px-3 pb-2 space-y-2"
+                style={{ height: VISIBLE_ITEMS * ITEM_HEIGHT }}
+              >
+                {duplicatedFeatures.map((feature, index) => (
+                  <RoadmapItem key={`${feature.label}-${index}`} feature={feature} />
+                ))}
+              </div>
+
+              <div className="px-3 pb-3">
+                <a href={FEEDBACK_FORM_URL} target="_blank" rel="noopener noreferrer">
+                  <Button variant="secondary" className="w-full text-xs gap-2 h-8">
+                    <ExternalLink className="h-3 w-3" />
+                    Feedback Form
+                  </Button>
+                </a>
+              </div>
+            </div>
+          </div>
+        </TooltipTrigger>
+        <TooltipContent side="right" sideOffset={12} className="p-3">
+          <FullRoadmapTooltip />
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}

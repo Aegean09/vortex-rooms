@@ -1,4 +1,3 @@
-
 "use client";
 
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -6,14 +5,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { useWebRTC } from '@/lib/webrtc/provider';
 import { cn } from '@/lib/utils';
 import { MicOff, HeadphoneOff } from 'lucide-react';
-
-export interface User {
-  id: string;
-  name: string;
-  isMuted?: boolean;
-  subSessionId?: string; // Add subSessionId to user type
-  isScreenSharing?: boolean; // Add isScreenSharing to user type
-}
+import { type User } from '@/interfaces/session';
 
 interface UserListProps {
   users: User[];
@@ -29,16 +21,15 @@ export function UserList({ users, currentUser }: UserListProps) {
         <ul className="space-y-3">
           {users.map((user) => {
             const isCurrentUser = user.id === currentUser?.id;
-            const voiceActivity = isCurrentUser 
-              ? null // Local user voice activity is handled separately
+            const voiceActivity = isCurrentUser
+              ? null
               : remoteVoiceActivity[user.id];
-            const isSpeaking = isCurrentUser 
-              ? localVoiceActivity 
+            const isSpeaking = isCurrentUser
+              ? localVoiceActivity
               : voiceActivity?.isActive || false;
-            
-            // Check mute/deafen status
+
             const userIsMuted = isCurrentUser ? isMuted : user.isMuted || false;
-            const userIsDeafened = isCurrentUser ? isDeafened : false; // Deafened is only local
+            const userIsDeafened = isCurrentUser ? isDeafened : false;
 
             return (
               <li key={user.id} className="flex items-center gap-3">
@@ -53,9 +44,9 @@ export function UserList({ users, currentUser }: UserListProps) {
                   </Avatar>
                   <span className={cn(
                     "absolute bottom-0 right-0 block h-3 w-3 rounded-full border-2 border-card transition-all duration-200",
-                    isSpeaking && !userIsMuted && !userIsDeafened ? "bg-green-500 animate-pulse" : 
-                    userIsMuted ? "bg-red-500" : 
-                    userIsDeafened ? "bg-orange-500" : 
+                    isSpeaking && !userIsMuted && !userIsDeafened ? "bg-green-500 animate-pulse" :
+                    userIsMuted ? "bg-red-500" :
+                    userIsDeafened ? "bg-orange-500" :
                     "bg-green-500"
                   )} />
                 </div>

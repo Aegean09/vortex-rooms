@@ -1,9 +1,8 @@
-
 import type { Metadata } from 'next';
 import './globals.css';
 import { Toaster } from '@/components/ui/toaster';
 import { FirebaseClientProvider } from '@/firebase';
-import { BuyMeACoffeeWidget } from '@/components/BuyMeACoffeeWidget';
+import { BuyMeACoffeeWidget } from '@/components/buy-me-a-coffee-widget/buy-me-a-coffee-widget';
 
 export const metadata: Metadata = {
   title: 'Vortex',

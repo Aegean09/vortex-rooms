@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useEffect } from 'react';
@@ -12,7 +11,6 @@ import { initiateAnonymousSignIn } from '@/firebase/non-blocking-login';
 import { useToast } from '@/hooks/use-toast';
 import { LogIn, ArrowLeft } from 'lucide-react';
 import { useUser } from '@/firebase/provider';
-import { Label } from '@/components/ui/label';
 
 export default function JoinForm() {
   const router = useRouter();
@@ -24,7 +22,7 @@ export default function JoinForm() {
 
   const auth = useAuth();
   const { user: authUser, isUserLoading } = useUser();
-  
+
   useEffect(() => {
     const sessionIdFromQuery = searchParams.get('sessionId');
     if (sessionIdFromQuery) {
@@ -48,13 +46,12 @@ export default function JoinForm() {
       const docSnap = await getDoc(sessionRef);
       if (docSnap.exists()) {
         const sessionData = docSnap.data();
-        
-        // Check max users limit
+
         if (sessionData.maxUsers) {
           const usersRef = collection(firestore, 'sessions', sessionId.trim(), 'users');
           const usersSnapshot = await getDocs(usersRef);
           const currentUserCount = usersSnapshot.size;
-          
+
           if (currentUserCount >= sessionData.maxUsers) {
             toast({
               variant: 'destructive',
@@ -65,8 +62,7 @@ export default function JoinForm() {
             return;
           }
         }
-        
-        // Navigate to setup page - password check will happen there
+
         router.push(`/session/${sessionId.trim()}/setup`);
       } else {
         toast({
@@ -75,8 +71,7 @@ export default function JoinForm() {
           description: `The session ID "${sessionId.trim()}" does not exist.`,
         });
       }
-    } catch (error) {
-      console.error("Error checking session:", error);
+    } catch {
       toast({
         variant: 'destructive',
         title: 'Error',
@@ -89,10 +84,10 @@ export default function JoinForm() {
 
   return (
     <main className="flex min-h-screen flex-col items-center justify-center p-8">
-       <div className="absolute inset-0 -z-10 h-full w-full bg-background bg-[radial-gradient(#2f2f33_1px,transparent_1px)] [background-size:32px_32px]"></div>
+      <div className="absolute inset-0 -z-10 h-full w-full bg-background bg-[radial-gradient(#2f2f33_1px,transparent_1px)] [background-size:32px_32px]"></div>
       <Card className="relative w-full max-w-md shadow-2xl bg-card/80 backdrop-blur-sm border-primary/20">
-         <Button variant="ghost" size="icon" className="absolute top-4 right-4 h-8 w-8" onClick={() => router.push('/')}>
-            <ArrowLeft className="h-4 w-4" />
+        <Button variant="ghost" size="icon" className="absolute top-4 right-4 h-8 w-8" onClick={() => router.push('/')}>
+          <ArrowLeft className="h-4 w-4" />
         </Button>
         <CardHeader className="text-center pt-12 sm:pt-6">
           <CardTitle className="text-3xl font-bold">Join a Room</CardTitle>

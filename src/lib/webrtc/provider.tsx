@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, {
@@ -12,7 +11,7 @@ import React, {
 import { Firestore, collection, onSnapshot, query, where, doc, getDocs, writeBatch, Unsubscribe, updateDoc } from 'firebase/firestore';
 import { createPeerConnection, createOffer, handleOffer } from './webrtc';
 import { useUser, useCollection, useMemoFirebase } from '@/firebase';
-import { User as UIVer } from '@/components/vortex/user-list';
+import { User } from '@/interfaces/session';
 import { usePushToTalk } from './hooks/use-push-to-talk';
 import { useRemoteVoiceActivity } from './hooks/use-remote-voice-activity';
 import { useLocalVoiceActivity } from './hooks/use-local-voice-activity';
@@ -22,13 +21,13 @@ import {
   updateNoiseSuppressionIntensity,
   resetNoiseSuppression,
   cleanupNoiseSuppressionNodes,
+  reconnectNoiseSuppressionOnExistingPipeline,
   type NoiseSuppressionNodes,
 } from './helpers/audio-helpers';
 
-
 interface WebRTCContextType {
   localStream: MediaStream | null;
-  rawStream: MediaStream | null; // Original stream before noise gate processing
+  rawStream: MediaStream | null;
   remoteStreams: Record<string, MediaStream>;
   screenShareStream: MediaStream | null;
   toggleMute: () => void;
@@ -46,8 +45,12 @@ interface WebRTCContextType {
   setPushToTalkKey: (key: string) => void;
   noiseSuppressionEnabled: boolean;
   setNoiseSuppressionEnabled: (enabled: boolean) => void;
-  noiseSuppressionIntensity: number; // 0.0 to 1.0
+  noiseSuppressionIntensity: number;
   setNoiseSuppressionIntensity: (intensity: number) => void;
+  audioInputDevices: MediaDeviceInfo[];
+  selectedDeviceId: string;
+  setSelectedDeviceId: (deviceId: string) => void;
+  reconnectMicrophone: () => Promise<void>;
 }
 
 const WebRTCContext = createContext<WebRTCContextType | undefined>(undefined);
@@ -68,11 +71,9 @@ interface WebRTCProviderProps {
   subSessionId: string;
 }
 
-// Extend RTCPeerConnection to hold its own unsubscribe function
 interface PeerConnectionWithUnsubscribe extends RTCPeerConnection {
   unsubscribeCandidates?: Unsubscribe;
 }
-
 
 export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
   children,
@@ -93,41 +94,47 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
   const [screenShareStream, setScreenShareStream] = useState<MediaStream | null>(null);
   const screenShareTrackRef = useRef<MediaStreamTrack | null>(null);
   const [presenterId, setPresenterId] = useState<string | null>(null);
-  // Noise gate: 40% sensitivity = -36 dB -> RMS ≈ 0.0158
-  const [noiseGateThreshold, setNoiseGateThreshold] = useState<number>(() => Math.pow(10, (-60 + 40 * 0.6) / 20)); // 40%
+  const [noiseGateThreshold, setNoiseGateThreshold] = useState<number>(() => Math.pow(10, (-60 + 40 * 0.6) / 20));
   const [pushToTalk, setPushToTalk] = useState<boolean>(false);
-  const [pushToTalkKey, setPushToTalkKey] = useState<string>('Space'); // Default: Space key
+  const [pushToTalkKey, setPushToTalkKey] = useState<string>('Space');
   const [isPressingPushToTalkKey, setIsPressingPushToTalkKey] = useState<boolean>(false);
   const prevPushToTalkRef = useRef(false);
-  const [noiseSuppressionEnabled, setNoiseSuppressionEnabled] = useState<boolean>(true); // Default: ON
-  const [noiseSuppressionIntensity, setNoiseSuppressionIntensity] = useState<number>(1); // Rnnoise fixed strength, no UI
+  const [noiseSuppressionEnabled, setNoiseSuppressionEnabled] = useState<boolean>(true);
+  const [noiseSuppressionIntensity, setNoiseSuppressionIntensity] = useState<number>(1);
+  const [audioInputDevices, setAudioInputDevices] = useState<MediaDeviceInfo[]>([]);
+  const [selectedDeviceId, setSelectedDeviceId] = useState<string>('');
 
-  // Remote voice activity detection
   const remoteVoiceActivity = useRemoteVoiceActivity({
     remoteStreams,
     threshold: noiseGateThreshold,
   });
 
-  // Local voice activity detection - only show if not using push to talk or key is pressed
   const rawLocalVoiceActivity = useLocalVoiceActivity({
     rawStream,
     isMuted,
     threshold: noiseGateThreshold,
   });
-  
-  // Filter out voice activity when push to talk is enabled but key is not pressed
+
   const localVoiceActivity = pushToTalk && !isPressingPushToTalkKey ? false : rawLocalVoiceActivity;
-  
-  // Refs for noise gate and noise suppression processing
+
   const audioNodesRef = useRef<NoiseSuppressionNodes | null>(null);
   const animationFrameRef = useRef<number | undefined>(undefined);
 
+  const isMutedRef = useRef(isMuted);
+  const pushToTalkRef = useRef(pushToTalk);
+  const isPressingPushToTalkKeyRef = useRef(isPressingPushToTalkKey);
+  const noiseGateThresholdRef = useRef(noiseGateThreshold);
+
+  useEffect(() => { isMutedRef.current = isMuted; }, [isMuted]);
+  useEffect(() => { pushToTalkRef.current = pushToTalk; }, [pushToTalk]);
+  useEffect(() => { isPressingPushToTalkKeyRef.current = isPressingPushToTalkKey; }, [isPressingPushToTalkKey]);
+  useEffect(() => { noiseGateThresholdRef.current = noiseGateThreshold; }, [noiseGateThreshold]);
 
   const usersCollectionRef = useMemoFirebase(
     () => (firestore ? collection(firestore, 'sessions', sessionId, 'users') : null),
     [firestore, sessionId]
   );
-  const { data: users } = useCollection<UIVer>(usersCollectionRef);
+  const { data: users } = useCollection<User>(usersCollectionRef);
 
   useEffect(() => {
     if (users) {
@@ -136,18 +143,14 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
     }
   }, [users]);
 
-
   const cleanupConnection = useCallback(async (peerId: string) => {
     const pc = peerConnections.current[peerId];
     if (pc) {
-      // First, unsubscribe from any Firestore listeners associated with this PC
       if (pc.unsubscribeCandidates) {
         pc.unsubscribeCandidates();
       }
-      // Then, close the connection
       pc.close();
       delete peerConnections.current[peerId];
-      console.log(`Cleaned up connection for peer ${peerId}`);
     }
 
     setRemoteStreams(prev => {
@@ -159,31 +162,28 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
     });
 
     if (firestore && sessionId) {
-        const callId = localPeerId < peerId ? `${localPeerId}_${peerId}` : `${peerId}_${localPeerId}`;
-        const callDocRef = doc(firestore, 'sessions', sessionId, 'calls', callId);
-        
-        try {
-            const batch = writeBatch(firestore);
-            
-            const offerCandidatesSnapshot = await getDocs(collection(callDocRef, 'offerCandidates'));
-            offerCandidatesSnapshot.forEach(doc => batch.delete(doc.ref));
+      const callId = localPeerId < peerId ? `${localPeerId}_${peerId}` : `${peerId}_${localPeerId}`;
+      const callDocRef = doc(firestore, 'sessions', sessionId, 'calls', callId);
 
-            const answerCandidatesSnapshot = await getDocs(collection(callDocRef, 'answerCandidates'));
-            answerCandidatesSnapshot.forEach(doc => batch.delete(doc.ref));
-            
-            batch.delete(callDocRef);
+      try {
+        const batch = writeBatch(firestore);
 
-            await batch.commit();
-             console.log(`Cleaned up Firestore call document for ${callId}`);
-        } catch (error) {
-            if (error instanceof Error && !error.message.includes('NOT_FOUND')) {
-              console.error(`Error cleaning up call document ${callId}:`, error);
-            }
+        const offerCandidatesSnapshot = await getDocs(collection(callDocRef, 'offerCandidates'));
+        offerCandidatesSnapshot.forEach(doc => batch.delete(doc.ref));
+
+        const answerCandidatesSnapshot = await getDocs(collection(callDocRef, 'answerCandidates'));
+        answerCandidatesSnapshot.forEach(doc => batch.delete(doc.ref));
+
+        batch.delete(callDocRef);
+        await batch.commit();
+      } catch (error) {
+        if (error instanceof Error && !error.message.includes('NOT_FOUND')) {
+          console.error(`Error cleaning up call document:`, error);
         }
+      }
     }
   }, [firestore, sessionId, localPeerId]);
 
-  // Push to talk hook
   usePushToTalk({
     localStream,
     isMuted,
@@ -193,11 +193,8 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
     onKeyStateChange: setIsPressingPushToTalkKey,
   });
 
-  // When push to talk is disabled, ensure mute state matches tracks
-  // Only sync when pushToTalk changes from enabled to disabled
   useEffect(() => {
     if (prevPushToTalkRef.current && !pushToTalk && localStream) {
-      // Push to talk was just disabled, sync mute state with tracks
       const audioTracks = localStream.getAudioTracks();
       if (audioTracks.length > 0) {
         const tracksEnabled = audioTracks[0].enabled;
@@ -213,15 +210,14 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
       const newMutedState = !isMuted;
       toggleMuteTracks(localStream, !newMutedState);
       setIsMuted(newMutedState);
-      
-      // Sync mute state to Firestore
+
       const userDocRef = doc(firestore, 'sessions', sessionId, 'users', user.uid);
       try {
         await updateDoc(userDocRef, { isMuted: newMutedState });
       } catch (error) {
         console.error('Error updating mute state in Firestore:', error);
       }
-      
+
       if (!newMutedState && isDeafened) {
         setIsDeafened(false);
       }
@@ -241,104 +237,183 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
     const userDocRef = doc(firestore, 'sessions', sessionId, 'users', user.uid);
 
     if (isScreenSharing) {
-        // Stop screen sharing
-        screenShareTrackRef.current?.stop();
+      screenShareTrackRef.current?.stop();
+
+      for (const peerId in peerConnections.current) {
+        const pc = peerConnections.current[peerId];
+        if (pc) {
+          const sender = pc.getSenders().find(s => s.track === screenShareTrackRef.current);
+          if (sender) {
+            pc.removeTrack(sender);
+            await createOffer(firestore, sessionId, localPeerId, peerId, pc);
+          }
+        }
+      }
+
+      setIsScreenSharing(false);
+      setScreenShareStream(null);
+      screenShareTrackRef.current = null;
+      await updateDoc(userDocRef, { isScreenSharing: false });
+    } else {
+      try {
+        const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+        const videoTrack = stream.getVideoTracks()[0];
+        screenShareTrackRef.current = videoTrack;
+
+        setIsScreenSharing(true);
+        setScreenShareStream(stream);
+        await updateDoc(userDocRef, { isScreenSharing: true });
+
+        videoTrack.onended = () => {
+          if (screenShareTrackRef.current) {
+            toggleScreenShare();
+          }
+        };
 
         for (const peerId in peerConnections.current) {
-            const pc = peerConnections.current[peerId];
-            if (pc) {
-                const sender = pc.getSenders().find(s => s.track === screenShareTrackRef.current);
-                if (sender) {
-                    pc.removeTrack(sender);
-                    // Renegotiate after removing track
-                    await createOffer(firestore, sessionId, localPeerId, peerId, pc);
-                }
-            }
+          const pc = peerConnections.current[peerId];
+          if (pc) {
+            pc.addTrack(videoTrack, stream);
+            await createOffer(firestore, sessionId, localPeerId, peerId, pc);
+          }
         }
-        
-        setIsScreenSharing(false);
-        setScreenShareStream(null); // Clear local preview
-        screenShareTrackRef.current = null;
+      } catch (err) {
+        console.error("Screen share permission denied or error:", err);
         await updateDoc(userDocRef, { isScreenSharing: false });
-
-    } else {
-        try {
-            const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
-            const videoTrack = stream.getVideoTracks()[0];
-            screenShareTrackRef.current = videoTrack;
-            
-            setIsScreenSharing(true);
-            setScreenShareStream(stream); // Set local preview
-            await updateDoc(userDocRef, { isScreenSharing: true });
-
-            videoTrack.onended = () => {
-                // This will be called when the user stops sharing from the browser's native UI
-                // Check if we are still in screen sharing mode before toggling
-                // This avoids race conditions if the user clicks the button and the browser UI simultaneously
-                if (screenShareTrackRef.current) {
-                     toggleScreenShare();
-                }
-            };
-            
-            for (const peerId in peerConnections.current) {
-                const pc = peerConnections.current[peerId];
-                if (pc) {
-                    pc.addTrack(videoTrack, stream);
-                    // Renegotiate after adding track
-                    await createOffer(firestore, sessionId, localPeerId, peerId, pc);
-                }
-            }
-        } catch (err) {
-            console.error("Screen share permission denied or error:", err);
-            await updateDoc(userDocRef, { isScreenSharing: false });
-            setIsScreenSharing(false);
-            setScreenShareStream(null);
-            // Re-throw the error so the UI component can catch it and show a toast.
-            throw err;
-        }
+        setIsScreenSharing(false);
+        setScreenShareStream(null);
+        throw err;
+      }
     }
-}, [isScreenSharing, firestore, user, sessionId, localPeerId, localStream]);
+  }, [isScreenSharing, firestore, user, sessionId, localPeerId, localStream]);
 
+  const enumerateAudioDevices = useCallback(async () => {
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const audioInputs = devices.filter(d => d.kind === 'audioinput');
+      setAudioInputDevices(audioInputs);
+      if (!selectedDeviceId && audioInputs.length > 0) {
+        setSelectedDeviceId(audioInputs[0].deviceId);
+      }
+    } catch (error) {
+      console.error('Error enumerating audio devices:', error);
+    }
+  }, [selectedDeviceId]);
+
+  const getMediaWithDevice = useCallback(async (deviceId?: string) => {
+    try {
+      const audioConstraints: MediaTrackConstraints = {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+      };
+      if (deviceId) {
+        audioConstraints.deviceId = { exact: deviceId };
+      }
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: audioConstraints,
+        video: false,
+      });
+      return stream;
+    } catch (error) {
+      console.error('Error accessing media devices:', error);
+      return null;
+    }
+  }, []);
+
+  const reconnectMicrophone = useCallback(async () => {
+    rawStream?.getTracks().forEach(track => track.stop());
+    const stream = await getMediaWithDevice(selectedDeviceId || undefined);
+    if (stream) {
+      setRawStream(stream);
+      await enumerateAudioDevices();
+    }
+  }, [rawStream, selectedDeviceId, getMediaWithDevice, enumerateAudioDevices]);
 
   useEffect(() => {
-    const getMedia = async () => {
-        try {
-            const stream = await navigator.mediaDevices.getUserMedia({ 
-                audio: {
-                    echoCancellation: true,
-                    noiseSuppression: true,
-                    autoGainControl: true,
-                }, 
-                video: false 
-            });
-            setRawStream(stream);
-        } catch (error) {
-            console.error('Error accessing media devices.', error);
-        }
+    if (!user) return;
+
+    const initMedia = async () => {
+      const stream = await getMediaWithDevice();
+      if (stream) {
+        setRawStream(stream);
+        await enumerateAudioDevices();
+      }
     };
-    
-    if (user) {
-        getMedia();
-    }
+
+    initMedia();
+
+    const handleDeviceChange = () => enumerateAudioDevices();
+    navigator.mediaDevices.addEventListener('devicechange', handleDeviceChange);
 
     return () => {
-        rawStream?.getTracks().forEach(track => track.stop());
-        setRawStream(null);
-        setLocalStream(null);
+      navigator.mediaDevices.removeEventListener('devicechange', handleDeviceChange);
+      rawStream?.getTracks().forEach(track => track.stop());
+      setRawStream(null);
+      setLocalStream(null);
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
-  // Noise gate and noise suppression processing: Create processed stream from raw stream
+  useEffect(() => {
+    if (!selectedDeviceId || !rawStream) return;
+
+    const currentTrack = rawStream.getAudioTracks()[0];
+    const currentDeviceId = currentTrack?.getSettings()?.deviceId;
+    if (currentDeviceId === selectedDeviceId) return;
+
+    const switchDevice = async () => {
+      rawStream.getTracks().forEach(track => track.stop());
+      const stream = await getMediaWithDevice(selectedDeviceId);
+      if (stream) {
+        setRawStream(stream);
+      }
+    };
+
+    switchDevice();
+  }, [selectedDeviceId]);
+
+  const startNoiseGateLoop = useCallback((nodes: NoiseSuppressionNodes) => {
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current);
+    }
+
+    const dataArray = new Uint8Array(nodes.analyser.frequencyBinCount);
+
+    const processNoiseGate = () => {
+      if (nodes.audioContext && nodes.audioContext.state === 'suspended') {
+        nodes.audioContext.resume().catch(console.error);
+      }
+
+      if (!nodes.analyser || !nodes.gainNode || nodes.audioContext?.state !== 'running') {
+        animationFrameRef.current = requestAnimationFrame(processNoiseGate);
+        return;
+      }
+
+      nodes.analyser.getByteFrequencyData(dataArray);
+
+      let sum = 0;
+      for (let i = 0; i < dataArray.length; i++) {
+        const normalized = dataArray[i] / 255;
+        sum += normalized * normalized;
+      }
+      const rms = Math.sqrt(sum / dataArray.length);
+
+      const shouldMute = isMutedRef.current || (pushToTalkRef.current && !isPressingPushToTalkKeyRef.current);
+      nodes.gainNode.gain.value = (!shouldMute && rms > noiseGateThresholdRef.current) ? 1.0 : 0.0;
+
+      animationFrameRef.current = requestAnimationFrame(processNoiseGate);
+    };
+
+    processNoiseGate();
+  }, []);
+
   useEffect(() => {
     if (!rawStream || rawStream.getAudioTracks().length === 0) {
       setLocalStream(null);
       return;
     }
 
-    let isMounted = true;
-
-    // Cleanup previous audio nodes
     if (animationFrameRef.current) {
       cancelAnimationFrame(animationFrameRef.current);
     }
@@ -347,11 +422,12 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
       audioNodesRef.current = null;
     }
 
-    // Create audio nodes with noise suppression
+    let isMounted = true;
+
     createAudioNodesWithNoiseSuppression(
       rawStream,
       {
-        threshold: noiseGateThreshold,
+        threshold: noiseGateThresholdRef.current,
         fftSize: 256,
         smoothingTimeConstant: 0.3,
       },
@@ -367,58 +443,16 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
 
       audioNodesRef.current = nodes;
 
-      // Resume AudioContext if suspended
       if (nodes.audioContext.state === 'suspended') {
         nodes.audioContext.resume().catch(console.error);
       }
 
-      // Create processed stream
-      const processedStream = nodes.destination.stream;
-      setLocalStream(processedStream);
-
-      // Noise gate processing loop
-      const dataArray = new Uint8Array(nodes.analyser.frequencyBinCount);
-      
-      const processNoiseGate = () => {
-        // Resume AudioContext if suspended (happens when tab goes to background)
-        if (nodes.audioContext && nodes.audioContext.state === 'suspended') {
-          nodes.audioContext.resume().catch(console.error);
-        }
-
-        if (!nodes.analyser || !nodes.gainNode || nodes.audioContext?.state !== 'running' || !isMounted) {
-          if (isMounted) {
-            animationFrameRef.current = requestAnimationFrame(processNoiseGate);
-          }
-          return;
-        }
-
-        nodes.analyser.getByteFrequencyData(dataArray);
-        
-        // Calculate RMS (Root Mean Square) for better voice activity detection
-        let sum = 0;
-        for (let i = 0; i < dataArray.length; i++) {
-          const normalized = dataArray[i] / 255;
-          sum += normalized * normalized;
-        }
-        const rms = Math.sqrt(sum / dataArray.length);
-
-        // Check if we should mute based on:
-        // 1. User manually muted
-        // 2. Push to talk enabled but key not pressed
-        const shouldMute = isMuted || (pushToTalk && !isPressingPushToTalkKey);
-        
-        // Apply noise gate: mute if below threshold OR if manually muted/push to talk
-        nodes.gainNode.gain.value = (!shouldMute && rms > noiseGateThreshold) ? 1.0 : 0.0;
-
-        if (isMounted) {
-          animationFrameRef.current = requestAnimationFrame(processNoiseGate);
-        }
-      };
-
-      processNoiseGate();
+      setLocalStream(nodes.destination.stream);
+      startNoiseGateLoop(nodes);
     }).catch((error) => {
       console.error('Failed to create audio nodes with noise suppression:', error);
-      // Fallback: create basic audio nodes without noise suppression
+      if (!isMounted) return;
+
       const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
       const source = audioContext.createMediaStreamSource(rawStream);
       const analyser = audioContext.createAnalyser();
@@ -431,7 +465,7 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
       source.connect(gainNode);
       gainNode.connect(destination);
 
-      audioNodesRef.current = {
+      const nodes: NoiseSuppressionNodes = {
         audioContext,
         source,
         workletNode: null,
@@ -440,33 +474,9 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
         destination,
       };
 
+      audioNodesRef.current = nodes;
       setLocalStream(destination.stream);
-
-      const dataArray = new Uint8Array(analyser.frequencyBinCount);
-      const processNoiseGate = () => {
-        if (audioContext.state === 'suspended') {
-          audioContext.resume().catch(console.error);
-        }
-        if (!analyser || !gainNode || audioContext?.state !== 'running' || !isMounted) {
-          if (isMounted) {
-            animationFrameRef.current = requestAnimationFrame(processNoiseGate);
-          }
-          return;
-        }
-        analyser.getByteFrequencyData(dataArray);
-        let sum = 0;
-        for (let i = 0; i < dataArray.length; i++) {
-          const normalized = dataArray[i] / 255;
-          sum += normalized * normalized;
-        }
-        const rms = Math.sqrt(sum / dataArray.length);
-        const shouldMute = isMuted || (pushToTalk && !isPressingPushToTalkKey);
-        gainNode.gain.value = (!shouldMute && rms > noiseGateThreshold) ? 1.0 : 0.0;
-        if (isMounted) {
-          animationFrameRef.current = requestAnimationFrame(processNoiseGate);
-        }
-      };
-      processNoiseGate();
+      startNoiseGateLoop(nodes);
     });
 
     return () => {
@@ -479,51 +489,47 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
         audioNodesRef.current = null;
       }
     };
-  }, [rawStream, noiseGateThreshold, isMuted, pushToTalk, isPressingPushToTalkKey, noiseSuppressionEnabled, noiseSuppressionIntensity]);
+  }, [rawStream, startNoiseGateLoop]);
 
-  // Update noise suppression intensity when it changes
+  useEffect(() => {
+    if (!audioNodesRef.current) return;
+
+    reconnectNoiseSuppressionOnExistingPipeline(
+      audioNodesRef.current,
+      noiseSuppressionEnabled
+    ).then((updatedNodes) => {
+      audioNodesRef.current = updatedNodes;
+    }).catch(console.error);
+  }, [noiseSuppressionEnabled]);
+
   useEffect(() => {
     if (audioNodesRef.current?.workletNode) {
       updateNoiseSuppressionIntensity(audioNodesRef.current.workletNode, noiseSuppressionIntensity);
     }
   }, [noiseSuppressionIntensity]);
 
-  // Update existing peer connections when localStream changes
-  // This is especially important when noise gate threshold changes
   useEffect(() => {
     if (!localStream || !firestore) return;
 
-    // Small delay to ensure stream is fully ready
     const timeoutId = setTimeout(() => {
-      // Update all existing peer connections with new localStream tracks
       const updateConnections = async () => {
         for (const [peerId, pc] of Object.entries(peerConnections.current)) {
           if (!pc || pc.connectionState === 'closed' || pc.signalingState === 'closed') continue;
 
-          // Get current audio senders
-          const audioSenders = pc.getSenders().filter(sender => 
+          const audioSenders = pc.getSenders().filter(sender =>
             sender.track && sender.track.kind === 'audio'
           );
 
-          // Get new audio tracks from localStream
           const newAudioTracks = localStream.getAudioTracks();
 
-          if (newAudioTracks.length === 0) {
-            console.warn(`No audio tracks in localStream for peer ${peerId}`);
-            continue;
-          }
+          if (newAudioTracks.length === 0) continue;
 
-          // If we have senders, replace tracks if they're different
           if (audioSenders.length > 0) {
-            // Replace existing tracks with new ones (important when noise gate threshold changes)
             for (let i = 0; i < Math.min(audioSenders.length, newAudioTracks.length); i++) {
               const sender = audioSenders[i];
               const newTrack = newAudioTracks[i];
-              
-              // Always replace when localStream changes (new stream created by noise gate)
-              // Track IDs will be different because it's a new MediaStreamDestination
+
               if (sender.track?.id !== newTrack.id) {
-                console.log(`Replacing audio track for peer ${peerId} (track ID: ${sender.track?.id} -> ${newTrack.id})`);
                 try {
                   await sender.replaceTrack(newTrack);
                 } catch (e) {
@@ -532,12 +538,9 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
               }
             }
           } else {
-            // No audio senders, add new tracks
-            console.log(`Adding audio tracks to peer ${peerId}`);
             newAudioTracks.forEach(track => {
               pc.addTrack(track, localStream);
             });
-            // Renegotiate after adding tracks
             try {
               await createOffer(firestore, sessionId, localPeerId, peerId, pc);
             } catch (e) {
@@ -548,24 +551,22 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
       };
 
       updateConnections();
-    }, 100); // Small delay to ensure stream is ready
+    }, 100);
 
     return () => clearTimeout(timeoutId);
   }, [localStream, firestore, sessionId, localPeerId]);
 
   useEffect(() => {
     const cleanupAll = () => {
-      console.log('Cleaning up all peer connections.');
       Object.keys(peerConnections.current).forEach(peerId => {
-          cleanupConnection(peerId);
+        cleanupConnection(peerId);
       });
     };
 
     return () => {
-        cleanupAll();
+      cleanupAll();
     };
   }, [cleanupConnection]);
-
 
   useEffect(() => {
     if (!firestore || !localStream || !user || !users || !subSessionId) return;
@@ -574,127 +575,112 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
     const peerIdsInSubSession = new Set(peersInSubSession.map(p => p.id));
 
     Object.keys(peerConnections.current).forEach(peerId => {
-        if (!peerIdsInSubSession.has(peerId)) {
-            console.log(`User ${peerId} left sub-session. Cleaning up connection.`);
-            cleanupConnection(peerId);
-        }
+      if (!peerIdsInSubSession.has(peerId)) {
+        cleanupConnection(peerId);
+      }
     });
 
     peersInSubSession.forEach(remotePeer => {
-        const remotePeerId = remotePeer.id;
-        if (peerConnections.current[remotePeerId]) return;
+      const remotePeerId = remotePeer.id;
+      if (peerConnections.current[remotePeerId]) return;
 
-        if (localPeerId < remotePeerId) {
-            console.log(`Found new peer ${remotePeerId} in sub-session. I will initiate call.`);
-            
-            const pc = createPeerConnection(
-                firestore, sessionId, localPeerId, remotePeerId,
-                (track, trackType) => {
-                    if (trackType === 'video') {
-                        // For video, create a new stream (screen share)
-                        setScreenShareStream(new MediaStream([track]));
-                    } else {
-                        // For audio, ensure we have a single stream per peer
-                        setRemoteStreams(prev => {
-                            const existingStream = prev[remotePeerId];
-                            if (existingStream) {
-                                // Add track to existing stream if not already present
-                                const hasTrack = existingStream.getTracks().some(t => t.id === track.id);
-                                if (!hasTrack) {
-                                    existingStream.addTrack(track);
-                                    // Force re-render by creating a new object
-                                    return { ...prev };
-                                }
-                                return prev;
-                            } else {
-                                // Create new stream for this peer
-                                const newStream = new MediaStream([track]);
-                                return { ...prev, [remotePeerId]: newStream };
-                            }
-                        });
-                    }
-                },
-                () => cleanupConnection(remotePeerId)
-            );
-            localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
-            peerConnections.current[remotePeerId] = pc;
-            createOffer(firestore, sessionId, localPeerId, remotePeerId, pc);
-        }
+      if (localPeerId < remotePeerId) {
+        const pc = createPeerConnection(
+          firestore, sessionId, localPeerId, remotePeerId,
+          (track, trackType) => {
+            if (trackType === 'video') {
+              setScreenShareStream(new MediaStream([track]));
+            } else {
+              setRemoteStreams(prev => {
+                const existingStream = prev[remotePeerId];
+                if (existingStream) {
+                  const hasTrack = existingStream.getTracks().some(t => t.id === track.id);
+                  if (!hasTrack) {
+                    existingStream.addTrack(track);
+                    return { ...prev };
+                  }
+                  return prev;
+                } else {
+                  const newStream = new MediaStream([track]);
+                  return { ...prev, [remotePeerId]: newStream };
+                }
+              });
+            }
+          },
+          () => cleanupConnection(remotePeerId)
+        );
+        localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+        peerConnections.current[remotePeerId] = pc;
+        createOffer(firestore, sessionId, localPeerId, remotePeerId, pc);
+      }
     });
 
     const callsCollectionRef = collection(firestore, 'sessions', sessionId, 'calls');
     const callsQuery = query(callsCollectionRef, where('calleeId', '==', localPeerId));
 
     const callsSnapshotUnsubscribe = onSnapshot(callsQuery, (snapshot) => {
-        snapshot.docChanges().forEach(async (change) => {
-            if (change.type === 'added' || change.type === 'modified') {
-                const callData = change.doc.data();
-                const remotePeerId = callData.callerId;
-                const offerDescription = callData.offer;
+      snapshot.docChanges().forEach(async (change) => {
+        if (change.type === 'added' || change.type === 'modified') {
+          const callData = change.doc.data();
+          const remotePeerId = callData.callerId;
+          const offerDescription = callData.offer;
 
-                const caller = users.find(u => u.id === remotePeerId);
+          const caller = users.find(u => u.id === remotePeerId);
 
-                if (caller && caller.subSessionId === subSessionId) {
-                    if (remotePeerId !== localPeerId && offerDescription) {
-                         if (!peerConnections.current[remotePeerId]) {
-                            console.log(`Incoming call from ${remotePeerId} in same sub-session.`);
-                            const pc = createPeerConnection(
-                                firestore, sessionId, localPeerId, remotePeerId,
-                                (track, trackType) => {
-                                    if (trackType === 'video') {
-                                        // For video, create a new stream (screen share)
-                                        setScreenShareStream(new MediaStream([track]));
-                                    } else {
-                                        // For audio, ensure we have a single stream per peer
-                                        setRemoteStreams(prev => {
-                                            const existingStream = prev[remotePeerId];
-                                            if (existingStream) {
-                                                // Add track to existing stream if not already present
-                                                const hasTrack = existingStream.getTracks().some(t => t.id === track.id);
-                                                if (!hasTrack) {
-                                                    existingStream.addTrack(track);
-                                                    // Force re-render by creating a new object
-                                                    return { ...prev };
-                                                }
-                                                return prev;
-                                            } else {
-                                                // Create new stream for this peer
-                                                const newStream = new MediaStream([track]);
-                                                return { ...prev, [remotePeerId]: newStream };
-                                            }
-                                        });
-                                    }
-                                },
-                                () => cleanupConnection(remotePeerId)
-                            );
-                            localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
-                            peerConnections.current[remotePeerId] = pc;
-                            await handleOffer(firestore, change.doc.ref, pc, offerDescription);
+          if (caller && caller.subSessionId === subSessionId) {
+            if (remotePeerId !== localPeerId && offerDescription) {
+              if (!peerConnections.current[remotePeerId]) {
+                const pc = createPeerConnection(
+                  firestore, sessionId, localPeerId, remotePeerId,
+                  (track, trackType) => {
+                    if (trackType === 'video') {
+                      setScreenShareStream(new MediaStream([track]));
+                    } else {
+                      setRemoteStreams(prev => {
+                        const existingStream = prev[remotePeerId];
+                        if (existingStream) {
+                          const hasTrack = existingStream.getTracks().some(t => t.id === track.id);
+                          if (!hasTrack) {
+                            existingStream.addTrack(track);
+                            return { ...prev };
+                          }
+                          return prev;
+                        } else {
+                          const newStream = new MediaStream([track]);
+                          return { ...prev, [remotePeerId]: newStream };
                         }
+                      });
                     }
-                }
+                  },
+                  () => cleanupConnection(remotePeerId)
+                );
+                localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+                peerConnections.current[remotePeerId] = pc;
+                await handleOffer(firestore, change.doc.ref, pc, offerDescription);
+              }
             }
-        });
+          }
+        }
+      });
     });
 
     return () => {
-        callsSnapshotUnsubscribe();
+      callsSnapshotUnsubscribe();
     };
   }, [firestore, localStream, sessionId, localPeerId, user, users, subSessionId, cleanupConnection]);
 
-
   return (
-    <WebRTCContext.Provider value={{ 
-      localStream, 
+    <WebRTCContext.Provider value={{
+      localStream,
       rawStream,
-      remoteStreams, 
-      screenShareStream, 
-      toggleMute, 
-      isMuted, 
-      toggleDeafen, 
-      isDeafened, 
-      isScreenSharing, 
-      toggleScreenShare, 
+      remoteStreams,
+      screenShareStream,
+      toggleMute,
+      isMuted,
+      toggleDeafen,
+      isDeafened,
+      isScreenSharing,
+      toggleScreenShare,
       presenterId,
       noiseGateThreshold,
       setNoiseGateThreshold,
@@ -708,6 +694,10 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
       setNoiseSuppressionEnabled,
       noiseSuppressionIntensity,
       setNoiseSuppressionIntensity,
+      audioInputDevices,
+      selectedDeviceId,
+      setSelectedDeviceId,
+      reconnectMicrophone,
     }}>
       {children}
       {Object.entries(remoteStreams).map(([peerId, stream]) => (

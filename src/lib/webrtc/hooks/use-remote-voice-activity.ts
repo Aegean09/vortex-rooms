@@ -22,10 +22,9 @@ export const useRemoteVoiceActivity = (params: UseRemoteVoiceActivityParams): Re
   const consecutiveInactiveFramesRef = useRef<Record<string, number>>({});
 
   useEffect(() => {
-    // Cleanup old analysers for streams that no longer exist
     Object.keys(analysersRef.current).forEach(peerId => {
       if (!remoteStreams[peerId]) {
-        const { analyser, audioContext, source } = analysersRef.current[peerId];
+        const { audioContext, source } = analysersRef.current[peerId];
         source.disconnect();
         if (audioContext.state !== 'closed') {
           audioContext.close();
@@ -34,33 +33,30 @@ export const useRemoteVoiceActivity = (params: UseRemoteVoiceActivityParams): Re
       }
     });
 
-    // Create analysers for new streams
     Object.entries(remoteStreams).forEach(([peerId, stream]) => {
       if (!analysersRef.current[peerId] && stream.getAudioTracks().length > 0) {
         const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
         const source = audioContext.createMediaStreamSource(stream);
         const analyser = audioContext.createAnalyser();
         analyser.fftSize = 256;
-        analyser.smoothingTimeConstant = 0.8; // Increased for smoother detection
+        analyser.smoothingTimeConstant = 0.8;
         source.connect(analyser);
 
         analysersRef.current[peerId] = { analyser, audioContext, source };
       }
     });
 
-    // Voice activity detection loop with debouncing
-    const ACTIVATION_FRAMES = 3; // Need 3 frames to activate
-    const DEACTIVATION_FRAMES = 8; // Need 8 frames to deactivate
-    
+    const ACTIVATION_FRAMES = 3;
+    const DEACTIVATION_FRAMES = 8;
+
     const checkVoiceActivity = () => {
       const newActivity: RemoteVoiceActivity = {};
 
       Object.entries(analysersRef.current).forEach(([peerId, { analyser, audioContext }]) => {
-        // Resume AudioContext if suspended (happens when tab goes to background)
         if (audioContext && audioContext.state === 'suspended') {
           audioContext.resume().catch(console.error);
         }
-        
+
         if (audioContext?.state !== 'running') {
           return;
         }
@@ -69,15 +65,14 @@ export const useRemoteVoiceActivity = (params: UseRemoteVoiceActivityParams): Re
 
         const rms = calculateRMS(dataArray);
         const isAboveThreshold = rms > threshold;
-        
-        // Initialize counters if needed
+
         if (!consecutiveActiveFramesRef.current[peerId]) {
           consecutiveActiveFramesRef.current[peerId] = 0;
         }
         if (!consecutiveInactiveFramesRef.current[peerId]) {
           consecutiveInactiveFramesRef.current[peerId] = 0;
         }
-        
+
         if (isAboveThreshold) {
           consecutiveActiveFramesRef.current[peerId]++;
           consecutiveInactiveFramesRef.current[peerId] = 0;
@@ -85,11 +80,10 @@ export const useRemoteVoiceActivity = (params: UseRemoteVoiceActivityParams): Re
           consecutiveInactiveFramesRef.current[peerId]++;
           consecutiveActiveFramesRef.current[peerId] = 0;
         }
-        
-        // Determine active state based on consecutive frames
+
         const isActive = consecutiveActiveFramesRef.current[peerId] >= ACTIVATION_FRAMES ||
           (voiceActivity[peerId]?.isActive && consecutiveInactiveFramesRef.current[peerId] < DEACTIVATION_FRAMES);
-        
+
         newActivity[peerId] = {
           isActive,
           level: rms,
@@ -108,7 +102,6 @@ export const useRemoteVoiceActivity = (params: UseRemoteVoiceActivityParams): Re
       if (animationFrameRef.current) {
         cancelAnimationFrame(animationFrameRef.current);
       }
-      // Cleanup all analysers
       Object.values(analysersRef.current).forEach(({ source, audioContext }) => {
         source.disconnect();
         if (audioContext.state !== 'closed') {
@@ -123,4 +116,3 @@ export const useRemoteVoiceActivity = (params: UseRemoteVoiceActivityParams): Re
 
   return voiceActivity;
 };
-

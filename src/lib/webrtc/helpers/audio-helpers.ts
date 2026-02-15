@@ -1,7 +1,3 @@
-/**
- * Audio processing helper functions
- */
-
 import { loadRnnoise, RnnoiseWorkletNode } from '@sapphi-red/web-noise-suppressor';
 
 const RNNNOISE_WORKLET_URL = '/audio-worklets/rnnoise-worklet.js';
@@ -22,9 +18,6 @@ export interface AudioNodes {
   destination: MediaStreamAudioDestinationNode;
 }
 
-/**
- * Creates audio processing nodes for noise gate
- */
 export const createAudioNodes = (
   rawStream: MediaStream,
   config: NoiseGateConfig
@@ -38,7 +31,6 @@ export const createAudioNodes = (
   const gainNode = audioContext.createGain();
   const destination = audioContext.createMediaStreamDestination();
 
-  // Connect: source -> analyser -> gain -> destination
   source.connect(analyser);
   source.connect(gainNode);
   gainNode.connect(destination);
@@ -46,9 +38,6 @@ export const createAudioNodes = (
   return { audioContext, source, analyser, gainNode, destination };
 };
 
-/**
- * Calculates RMS (Root Mean Square) from frequency data
- */
 export const calculateRMS = (dataArray: Uint8Array): number => {
   let sum = 0;
   for (let i = 0; i < dataArray.length; i++) {
@@ -58,9 +47,6 @@ export const calculateRMS = (dataArray: Uint8Array): number => {
   return Math.sqrt(sum / dataArray.length);
 };
 
-/**
- * Processes noise gate on audio stream
- */
 export const processNoiseGate = (
   analyser: AnalyserNode,
   gainNode: GainNode,
@@ -69,16 +55,13 @@ export const processNoiseGate = (
 ): number => {
   const dataArray = new Uint8Array(analyser.frequencyBinCount);
   analyser.getByteFrequencyData(dataArray);
-  
+
   const rms = calculateRMS(dataArray);
   gainNode.gain.value = rms > threshold ? 1.0 : 0.0;
-  
+
   return requestAnimationFrame(onFrame);
 };
 
-/**
- * Cleans up audio nodes
- */
 export const cleanupAudioNodes = (
   nodes: Partial<AudioNodes>,
   animationFrameId?: number
@@ -100,12 +83,9 @@ export const cleanupAudioNodes = (
   }
 };
 
-/**
- * Noise Suppression Configuration
- */
 export interface NoiseSuppressionConfig {
   enabled: boolean;
-  intensity: number; // 0.0 to 1.0 (Low, Medium, High)
+  intensity: number;
 }
 
 export interface NoiseSuppressionNodes {
@@ -117,10 +97,6 @@ export interface NoiseSuppressionNodes {
   destination: MediaStreamAudioDestinationNode;
 }
 
-/**
- * Creates audio processing nodes with Rnnoise (AI) noise suppression when enabled.
- * Uses xiph/rnnoise via @sapphi-red/web-noise-suppressor for much better keyboard/background noise reduction.
- */
 export const createAudioNodesWithNoiseSuppression = async (
   rawStream: MediaStream,
   config: NoiseGateConfig,
@@ -167,9 +143,6 @@ export const createAudioNodesWithNoiseSuppression = async (
   return { audioContext, source, workletNode, analyser, gainNode, destination };
 };
 
-/**
- * Updates noise suppression intensity
- */
 export const updateNoiseSuppressionIntensity = (
   workletNode: AudioWorkletNode | null,
   intensity: number
@@ -182,9 +155,6 @@ export const updateNoiseSuppressionIntensity = (
   }
 };
 
-/**
- * Resets noise suppression (useful when switching microphones)
- */
 export const resetNoiseSuppression = (workletNode: AudioWorkletNode | null): void => {
   if (workletNode) {
     workletNode.port.postMessage({
@@ -193,9 +163,6 @@ export const resetNoiseSuppression = (workletNode: AudioWorkletNode | null): voi
   }
 };
 
-/**
- * Cleans up noise suppression nodes. Calls destroy() on Rnnoise node when present.
- */
 export const cleanupNoiseSuppressionNodes = (
   nodes: Partial<NoiseSuppressionNodes>,
   animationFrameId?: number
@@ -221,4 +188,46 @@ export const cleanupNoiseSuppressionNodes = (
   if (nodes.audioContext && nodes.audioContext.state !== 'closed') {
     nodes.audioContext.close();
   }
+};
+
+export const reconnectNoiseSuppressionOnExistingPipeline = async (
+  nodes: NoiseSuppressionNodes,
+  enabled: boolean
+): Promise<NoiseSuppressionNodes> => {
+  nodes.source.disconnect();
+  if (nodes.workletNode) {
+    if (typeof (nodes.workletNode as { destroy?: () => void }).destroy === 'function') {
+      (nodes.workletNode as RnnoiseWorkletNode).destroy();
+    }
+    nodes.workletNode.disconnect();
+  }
+
+  let workletNode: (AudioWorkletNode & { destroy?: () => void }) | null = null;
+
+  if (enabled) {
+    try {
+      const wasmBinary = await loadRnnoise({
+        url: RNNNOISE_WASM_URL,
+        simdUrl: RNNNOISE_SIMD_URL,
+      });
+      await nodes.audioContext.audioWorklet.addModule(RNNNOISE_WORKLET_URL).catch(() => {});
+      const rnnoise = new RnnoiseWorkletNode(nodes.audioContext, {
+        wasmBinary,
+        maxChannels: 2,
+      });
+      workletNode = rnnoise;
+      nodes.source.connect(rnnoise);
+      rnnoise.connect(nodes.analyser);
+      rnnoise.connect(nodes.gainNode);
+    } catch (error) {
+      console.warn('Failed to load Rnnoise, falling back to direct connection:', error);
+      nodes.source.connect(nodes.analyser);
+      nodes.source.connect(nodes.gainNode);
+    }
+  } else {
+    nodes.source.connect(nodes.analyser);
+    nodes.source.connect(nodes.gainNode);
+  }
+
+  return { ...nodes, workletNode };
 };

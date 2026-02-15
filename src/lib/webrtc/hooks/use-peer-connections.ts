@@ -4,7 +4,7 @@ import { createConnection, addLocalTracksToPeer, updatePeerConnectionTracks, cle
 import { handleOffer, createOffer } from '../webrtc';
 import { addTrackToRemoteStream } from '../helpers/webrtc-helpers';
 import { PeerConnectionWithUnsubscribe, OnTrackCallback } from '../types';
-import { User as UIVer } from '@/components/vortex/user-list';
+import { User } from '@/interfaces/session';
 
 export interface UsePeerConnectionsParams {
   firestore: Firestore | null;
@@ -12,7 +12,7 @@ export interface UsePeerConnectionsParams {
   localPeerId: string;
   subSessionId: string;
   localStream: MediaStream | null;
-  users: UIVer[] | null;
+  users: User[] | null;
   onRemoteTrack: (peerId: string, track: MediaStreamTrack, trackType: 'audio' | 'video') => void;
   onScreenShareTrack: (track: MediaStreamTrack) => void;
   peerConnectionsRef: React.MutableRefObject<Record<string, PeerConnectionWithUnsubscribe>>;
@@ -30,12 +30,11 @@ export const usePeerConnections = (params: UsePeerConnectionsParams) => {
         firestore,
         sessionId,
         localPeerId,
-        () => {} // setRemoteStreams will be handled by parent
+        () => {}
       );
     }
   }, [firestore, sessionId, localPeerId]);
 
-  // Update peer connections when localStream changes
   useEffect(() => {
     if (!localStream || !firestore) return;
 
@@ -52,29 +51,23 @@ export const usePeerConnections = (params: UsePeerConnectionsParams) => {
     return () => clearTimeout(timeoutId);
   }, [localStream, firestore, sessionId, localPeerId]);
 
-  // Manage peer connections based on users in sub-session
   useEffect(() => {
     if (!firestore || !localStream || !users || !subSessionId) return;
 
     const peersInSubSession = users.filter(u => u.id !== localPeerId && u.subSessionId === subSessionId);
     const peerIdsInSubSession = new Set(peersInSubSession.map(p => p.id));
 
-    // Clean up connections for users who left
     Object.keys(peerConnections.current).forEach(peerId => {
       if (!peerIdsInSubSession.has(peerId)) {
-        console.log(`User ${peerId} left sub-session. Cleaning up connection.`);
         handleDisconnect(peerId);
       }
     });
 
-    // Create connections for new peers (caller role)
     peersInSubSession.forEach(remotePeer => {
       const remotePeerId = remotePeer.id;
       if (peerConnections.current[remotePeerId]) return;
 
       if (localPeerId < remotePeerId) {
-        console.log(`Found new peer ${remotePeerId} in sub-session. I will initiate call.`);
-        
         const onTrack: OnTrackCallback = (track, trackType) => {
           if (trackType === 'video') {
             onScreenShareTrack(track);
@@ -98,7 +91,6 @@ export const usePeerConnections = (params: UsePeerConnectionsParams) => {
       }
     });
 
-    // Listen for incoming calls (callee role)
     const callsCollectionRef = collection(firestore, 'sessions', sessionId, 'calls');
     const callsQuery = query(callsCollectionRef, where('calleeId', '==', localPeerId));
 
@@ -113,8 +105,6 @@ export const usePeerConnections = (params: UsePeerConnectionsParams) => {
 
           if (caller && caller.subSessionId === subSessionId) {
             if (remotePeerId !== localPeerId && offerDescription && !peerConnections.current[remotePeerId]) {
-              console.log(`Incoming call from ${remotePeerId} in same sub-session.`);
-              
               const onTrack: OnTrackCallback = (track, trackType) => {
                 if (trackType === 'video') {
                   onScreenShareTrack(track);
@@ -146,7 +136,6 @@ export const usePeerConnections = (params: UsePeerConnectionsParams) => {
     };
   }, [firestore, localStream, sessionId, localPeerId, users, subSessionId, handleDisconnect, onRemoteTrack, onScreenShareTrack]);
 
-  // Cleanup all connections on unmount
   useEffect(() => {
     return () => {
       Object.keys(peerConnections.current).forEach(peerId => {
@@ -157,4 +146,3 @@ export const usePeerConnections = (params: UsePeerConnectionsParams) => {
 
   return { peerConnections };
 };
-

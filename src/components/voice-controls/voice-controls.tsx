@@ -2,12 +2,12 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
-import { Mic, MicOff, Headphones, PhoneOff, HeadphoneOff, ScreenShare, ScreenShareOff, Settings2, Radio } from 'lucide-react';
+import { Mic, MicOff, Headphones, PhoneOff, HeadphoneOff, ScreenShare, ScreenShareOff, Settings2, Radio, RefreshCw } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useRouter } from 'next/navigation';
-import { type User } from './user-list';
+import { type User } from '@/interfaces/session';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
@@ -21,36 +21,27 @@ import {
   DialogTitle,
   DialogTrigger,
   DialogClose,
-} from "@/components/ui/dialog"
+} from "@/components/ui/dialog";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from "@/components/ui/popover"
+} from "@/components/ui/popover";
 import { Slider } from '@/components/ui/slider';
 import { useIsMobile } from '@/hooks/use-mobile';
-
+import { getKeyDisplayName, rmsToPercent, percentToRms } from '@/helpers/audio-helpers';
 
 interface VoiceControlsProps {
-    currentUser: User | null;
+  currentUser: User | null;
 }
 
-const getKeyDisplayName = (keyCode: string): string => {
-  if (keyCode === 'Space') return 'Space';
-  if (keyCode === 'MediaRecord') return 'Record';
-  if (keyCode.startsWith('Key')) return keyCode.replace('Key', '');
-  if (keyCode.startsWith('Digit')) return keyCode.replace('Digit', '');
-  if (keyCode.startsWith('Arrow')) return keyCode.replace('Arrow', 'Arrow ');
-  return keyCode;
-};
-
 export function VoiceControls({ currentUser }: VoiceControlsProps) {
-  const { 
-    localStream, 
-    rawStream, // Orijinal stream - voice activity için
-    isMuted, 
-    toggleMute, 
-    isDeafened, 
+  const {
+    localStream,
+    rawStream,
+    isMuted,
+    toggleMute,
+    isDeafened,
     toggleDeafen,
     isScreenSharing,
     toggleScreenShare,
@@ -62,12 +53,14 @@ export function VoiceControls({ currentUser }: VoiceControlsProps) {
     setPushToTalkKey,
     noiseSuppressionEnabled,
     setNoiseSuppressionEnabled,
-    noiseSuppressionIntensity,
-    setNoiseSuppressionIntensity,
+    audioInputDevices,
+    selectedDeviceId,
+    setSelectedDeviceId,
+    reconnectMicrophone,
   } = useWebRTC();
   const [hasMicPermission, setHasMicPermission] = useState(false);
   const [voiceActivity, setVoiceActivity] = useState(false);
-  const [currentLevel, setCurrentLevel] = useState(0); // Canlı ses seviyesi
+  const [currentLevel, setCurrentLevel] = useState(0);
   const [isRecordingKey, setIsRecordingKey] = useState(false);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const animationFrameRef = useRef<number | undefined>(undefined);
@@ -77,9 +70,8 @@ export function VoiceControls({ currentUser }: VoiceControlsProps) {
   const isMobile = useIsMobile();
 
   useEffect(() => {
-    // rawStream kullan - noise gate'ten önceki orijinal ses
     const streamToAnalyze = rawStream || localStream;
-    
+
     if (streamToAnalyze && streamToAnalyze.getAudioTracks().length > 0) {
       setHasMicPermission(true);
       const audioContext = new AudioContext();
@@ -96,23 +88,19 @@ export function VoiceControls({ currentUser }: VoiceControlsProps) {
       const checkVoiceActivity = () => {
         if (analyserRef.current && !isMuted) {
           analyserRef.current.getByteFrequencyData(dataArray);
-          
-          // RMS hesapla - noise gate ile aynı mantık
+
           let sum = 0;
           for (let i = 0; i < dataArray.length; i++) {
             const normalized = dataArray[i] / 255;
             sum += normalized * normalized;
           }
           const rms = Math.sqrt(sum / dataArray.length);
-          
-          // Canlı ses seviyesini güncelle (UI için)
+
           setCurrentLevel(rms);
-          
-          // Noise gate threshold'unu kullan
           setVoiceActivity(rms > noiseGateThreshold);
         } else {
-            setVoiceActivity(false);
-            setCurrentLevel(0);
+          setVoiceActivity(false);
+          setCurrentLevel(0);
         }
         animationFrameRef.current = requestAnimationFrame(checkVoiceActivity);
       };
@@ -131,21 +119,18 @@ export function VoiceControls({ currentUser }: VoiceControlsProps) {
         }
       };
     } else {
-        setHasMicPermission(false);
+      setHasMicPermission(false);
     }
   }, [localStream, rawStream, isMuted, noiseGateThreshold]);
 
-  // Key recording for push to talk
   useEffect(() => {
     if (!isRecordingKey) return;
 
     const handleKeyDown = (event: KeyboardEvent) => {
-      // Ignore modifier keys alone
       if (['Control', 'Shift', 'Alt', 'Meta'].includes(event.key)) {
         return;
       }
 
-      // Record the key
       setPushToTalkKey(event.code);
       setIsRecordingKey(false);
       event.preventDefault();
@@ -158,32 +143,18 @@ export function VoiceControls({ currentUser }: VoiceControlsProps) {
       window.removeEventListener('keydown', handleKeyDown, true);
     };
   }, [isRecordingKey, setPushToTalkKey]);
-  
-  // Logaritmik scale (dB) - insan kulağı logaritmik algılar
-  // RMS'i dB'ye çevir: dB = 20 * log10(rms)
-  // -60 dB = very quiet, -20 dB = normal speech, 0 dB = maximum
-  const minDb = -60;
-  const maxDb = 0;
-  
-  const rmsToPercent = (rms: number): number => {
-    if (rms <= 0.0001) return 0;
-    const dB = 20 * Math.log10(rms);
-    // dB'yi 0-100 arasına map et
-    const percent = ((dB - minDb) / (maxDb - minDb)) * 100;
-    return Math.max(0, Math.min(100, Math.round(percent)));
-  };
-  
+
   const levelPercent = rmsToPercent(currentLevel);
   const thresholdPercent = rmsToPercent(noiseGateThreshold);
 
   const handleToggleMute = () => {
     if (!localStream) {
-         toast({
-          variant: 'destructive',
-          title: 'Microphone Not Available',
-          description: 'Cannot mute/unmute without microphone access.',
-        });
-        return;
+      toast({
+        variant: 'destructive',
+        title: 'Microphone Not Available',
+        description: 'Cannot mute/unmute without microphone access.',
+      });
+      return;
     }
     toggleMute();
   };
@@ -191,24 +162,23 @@ export function VoiceControls({ currentUser }: VoiceControlsProps) {
   const handleToggleDeafen = () => {
     toggleDeafen();
   };
-  
+
   const handleToggleScreenShare = () => {
-      toggleScreenShare().catch(error => {
-          console.error("Error toggling screen share:", error);
-          if (error.name === 'NotAllowedError') {
-             toast({
-                variant: 'destructive',
-                title: 'Permission Denied',
-                description: 'You need to grant screen sharing permission to use this feature.'
-             });
-          } else {
-             toast({
-                variant: 'destructive',
-                title: 'Screen Share Failed',
-                description: 'Could not start screen sharing. Please try again.'
-             });
-          }
-      });
+    toggleScreenShare().catch(error => {
+      if (error.name === 'NotAllowedError') {
+        toast({
+          variant: 'destructive',
+          title: 'Permission Denied',
+          description: 'You need to grant screen sharing permission to use this feature.'
+        });
+      } else {
+        toast({
+          variant: 'destructive',
+          title: 'Screen Share Failed',
+          description: 'Could not start screen sharing. Please try again.'
+        });
+      }
+    });
   };
 
   const handleDisconnect = () => {
@@ -223,17 +193,17 @@ export function VoiceControls({ currentUser }: VoiceControlsProps) {
             <>
               <div className="relative">
                 <Avatar className={cn(
-                    "h-10 w-10 ring-2 ring-transparent transition-all duration-100",
-                    voiceActivity && !isMuted && "ring-green-500 ring-offset-2 ring-offset-card"
+                  "h-10 w-10 ring-2 ring-transparent transition-all duration-100",
+                  voiceActivity && !isMuted && "ring-green-500 ring-offset-2 ring-offset-card"
                 )}>
                   <AvatarFallback>{currentUser.name.substring(0, 2).toUpperCase()}</AvatarFallback>
                 </Avatar>
               </div>
               <div>
                 <p className="font-semibold text-sm">{currentUser.name}</p>
-                 <p className={`text-xs ${hasMicPermission ? 'text-green-400' : 'text-red-400'}`}>
-                   {hasMicPermission ? 'Voice Connected' : 'No Mic Access'}
-                 </p>
+                <p className={`text-xs ${hasMicPermission ? 'text-green-400' : 'text-red-400'}`}>
+                  {hasMicPermission ? 'Voice Connected' : 'No Mic Access'}
+                </p>
               </div>
             </>
           )}
@@ -252,15 +222,14 @@ export function VoiceControls({ currentUser }: VoiceControlsProps) {
           <Tooltip>
             <TooltipTrigger asChild>
               <Button variant={isDeafened ? 'destructive' : 'secondary'} size="icon" onClick={handleToggleDeafen}>
-                 {isDeafened ? <HeadphoneOff className="h-5 w-5" /> : <Headphones className="h-5 w-5" />}
+                {isDeafened ? <HeadphoneOff className="h-5 w-5" /> : <Headphones className="h-5 w-5" />}
               </Button>
             </TooltipTrigger>
             <TooltipContent>
               <p>{isDeafened ? 'Undeafen' : 'Deafen'}</p>
             </TooltipContent>
           </Tooltip>
-          
-          {/* Audio Sensitivity Settings */}
+
           <Popover>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -275,16 +244,47 @@ export function VoiceControls({ currentUser }: VoiceControlsProps) {
               </TooltipContent>
             </Tooltip>
 
-            <PopoverContent className="w-80" side="top" align="end">
+            <PopoverContent className="w-80 max-h-[70vh] overflow-y-auto" side="top" align="end">
               <div className="space-y-4">
-                <div className="space-y-2">
+                <div className="space-y-3">
+                  <h4 className="font-medium text-sm flex items-center gap-2">
+                    <Mic className="h-4 w-4" />
+                    Mic Settings
+                  </h4>
+                  {audioInputDevices.length > 0 && (
+                    <div className="space-y-1.5">
+                      <Label className="text-xs text-muted-foreground">Input Device</Label>
+                      <select
+                        value={selectedDeviceId}
+                        onChange={(e) => setSelectedDeviceId(e.target.value)}
+                        className="w-full h-8 rounded-md border border-input bg-background px-2 text-xs ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      >
+                        {audioInputDevices.map((device) => (
+                          <option key={device.deviceId} value={device.deviceId}>
+                            {device.label || `Microphone ${device.deviceId.slice(0, 8)}`}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full text-xs gap-2"
+                    onClick={reconnectMicrophone}
+                  >
+                    <RefreshCw className="h-3 w-3" />
+                    Reconnect Microphone
+                  </Button>
+                </div>
+
+                <div className="space-y-2 pt-2 border-t">
                   <h4 className="font-medium text-sm">Noise Gate</h4>
                   <p className="text-xs text-muted-foreground">
-                    Arka plan gürültüsünü filtreler. Yeşil çizginin altındaki sesler karşıya gitmez.
+                    Filters background noise. Sounds below the green threshold line won't be transmitted.
                   </p>
                 </div>
-                
-                {/* Canlı Ses Seviyesi Göstergesi */}
+
                 <div className="space-y-2">
                   <div className="flex justify-between text-xs text-muted-foreground">
                     <span>Input Level</span>
@@ -296,23 +296,20 @@ export function VoiceControls({ currentUser }: VoiceControlsProps) {
                     </span>
                   </div>
                   <div className="relative h-6 bg-secondary rounded-md overflow-hidden">
-                    {/* Ses seviyesi bar */}
-                    <div 
+                    <div
                       className={cn(
                         "absolute inset-y-0 left-0 transition-all duration-75",
-                        voiceActivity 
-                          ? "bg-gradient-to-r from-green-500 to-green-400" 
+                        voiceActivity
+                          ? "bg-gradient-to-r from-green-500 to-green-400"
                           : "bg-gradient-to-r from-muted-foreground/50 to-muted-foreground/30"
                       )}
                       style={{ width: `${levelPercent}%` }}
                     />
-                    {/* Threshold çizgisi */}
-                    <div 
+                    <div
                       className="absolute inset-y-0 w-0.5 bg-primary shadow-[0_0_8px_rgba(125,249,255,0.5)]"
                       style={{ left: `${thresholdPercent}%` }}
                     />
-                    {/* Threshold etiketi */}
-                    <div 
+                    <div
                       className="absolute -top-5 text-[10px] text-primary font-medium transform -translate-x-1/2"
                       style={{ left: `${thresholdPercent}%` }}
                     >
@@ -320,8 +317,7 @@ export function VoiceControls({ currentUser }: VoiceControlsProps) {
                     </div>
                   </div>
                 </div>
-                
-                {/* Sensitivity Slider */}
+
                 <div className="space-y-3 pt-2">
                   <div className="flex justify-between text-xs">
                     <span className="text-muted-foreground">Sensitivity</span>
@@ -330,10 +326,7 @@ export function VoiceControls({ currentUser }: VoiceControlsProps) {
                   <Slider
                     value={[thresholdPercent]}
                     onValueChange={([value]) => {
-                      // Convert percentage to dB, then dB to RMS
-                      const dB = minDb + (value / 100) * (maxDb - minDb);
-                      const rms = Math.pow(10, dB / 20);
-                      setNoiseGateThreshold(rms);
+                      setNoiseGateThreshold(percentToRms(value));
                     }}
                     min={0}
                     max={100}
@@ -346,7 +339,6 @@ export function VoiceControls({ currentUser }: VoiceControlsProps) {
                   </div>
                 </div>
 
-                {/* Noise Suppression - On/Off only */}
                 <div className="space-y-3 pt-2 border-t">
                   <div className="flex items-center justify-between">
                     <div className="space-y-0.5">
@@ -365,7 +357,6 @@ export function VoiceControls({ currentUser }: VoiceControlsProps) {
                   </div>
                 </div>
 
-                {/* Push to Talk - Only on Desktop */}
                 {!isMobile && (
                   <div className="space-y-3 pt-2 border-t">
                     <div className="flex items-center justify-between">
@@ -423,27 +414,27 @@ export function VoiceControls({ currentUser }: VoiceControlsProps) {
               </div>
             </PopoverContent>
           </Popover>
-          
-           {false && !isMobile && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button variant={isScreenSharing ? 'destructive' : 'secondary'} size="icon" onClick={handleToggleScreenShare}>
-                    {isScreenSharing ? <ScreenShareOff className="h-5 w-5" /> : <ScreenShare className="h-5 w-5" />}
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>{isScreenSharing ? 'Stop Sharing' : 'Share Screen'}</p>
-                </TooltipContent>
-              </Tooltip>
-           )}
-           <Dialog>
+
+          {false && !isMobile && (
             <Tooltip>
               <TooltipTrigger asChild>
-                 <DialogTrigger asChild>
+                <Button variant={isScreenSharing ? 'destructive' : 'secondary'} size="icon" onClick={handleToggleScreenShare}>
+                  {isScreenSharing ? <ScreenShareOff className="h-5 w-5" /> : <ScreenShare className="h-5 w-5" />}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>{isScreenSharing ? 'Stop Sharing' : 'Share Screen'}</p>
+              </TooltipContent>
+            </Tooltip>
+          )}
+          <Dialog>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <DialogTrigger asChild>
                   <Button variant="destructive" size="icon">
                     <PhoneOff className="h-5 w-5" />
                   </Button>
-                 </DialogTrigger>
+                </DialogTrigger>
               </TooltipTrigger>
               <TooltipContent>
                 <p>Disconnect</p>

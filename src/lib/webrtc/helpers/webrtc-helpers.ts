@@ -1,9 +1,6 @@
 import { Firestore, collection, doc, getDocs, writeBatch } from 'firebase/firestore';
 import { PeerConnectionWithUnsubscribe } from '../types';
 
-/**
- * Cleans up Firestore call document and candidates
- */
 export const cleanupFirestoreCall = async (
   firestore: Firestore,
   sessionId: string,
@@ -32,9 +29,6 @@ export const cleanupFirestoreCall = async (
   }
 };
 
-/**
- * Cleans up peer connection
- */
 export const cleanupPeerConnection = (
   peerConnections: React.MutableRefObject<Record<string, PeerConnectionWithUnsubscribe>>,
   peerId: string
@@ -50,9 +44,6 @@ export const cleanupPeerConnection = (
   }
 };
 
-/**
- * Manages remote stream tracks per peer
- */
 export const addTrackToRemoteStream = (
   remoteStreams: Record<string, MediaStream>,
   peerId: string,
@@ -71,4 +62,3 @@ export const addTrackToRemoteStream = (
     return { ...remoteStreams, [peerId]: newStream };
   }
 };
-

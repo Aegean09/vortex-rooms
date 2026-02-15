@@ -6,14 +6,7 @@ import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Send } from 'lucide-react';
-import { type User } from './user-list';
-
-export interface Message {
-  id: string;
-  user: User;
-  text: string;
-  timestamp: string;
-}
+import { type Message } from '@/interfaces/session';
 
 interface ChatAreaProps {
   messages: Message[];
@@ -31,13 +24,13 @@ export function ChatArea({ messages, onSendMessage }: ChatAreaProps) {
       setNewMessage('');
     }
   };
-  
+
   useEffect(() => {
     if (scrollAreaRef.current) {
-        const viewport = scrollAreaRef.current.querySelector('[data-radix-scroll-area-viewport]');
-        if (viewport) {
-            viewport.scrollTop = viewport.scrollHeight;
-        }
+      const viewport = scrollAreaRef.current.querySelector('[data-radix-scroll-area-viewport]');
+      if (viewport) {
+        viewport.scrollTop = viewport.scrollHeight;
+      }
     }
   }, [messages]);
 

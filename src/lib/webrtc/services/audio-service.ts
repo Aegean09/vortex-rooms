@@ -1,7 +1,3 @@
-/**
- * Audio service for managing microphone and audio processing
- */
-
 export interface AudioConstraints {
   echoCancellation?: boolean;
   noiseSuppression?: boolean;
@@ -14,9 +10,6 @@ const DEFAULT_AUDIO_CONSTRAINTS: AudioConstraints = {
   autoGainControl: true,
 };
 
-/**
- * Gets user media stream with audio
- */
 export const getUserMedia = async (
   constraints: AudioConstraints = DEFAULT_AUDIO_CONSTRAINTS
 ): Promise<MediaStream> => {
@@ -26,18 +19,12 @@ export const getUserMedia = async (
   });
 };
 
-/**
- * Stops all tracks in a media stream
- */
 export const stopMediaStream = (stream: MediaStream | null): void => {
   if (stream) {
     stream.getTracks().forEach(track => track.stop());
   }
 };
 
-/**
- * Toggles mute state on audio tracks
- */
 export const toggleMuteTracks = (
   stream: MediaStream | null,
   enabled: boolean
@@ -48,4 +35,3 @@ export const toggleMuteTracks = (
     });
   }
 };
-

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef, useCallback } from 'react';
-import { useRouter, useParams, useSearchParams } from 'next/navigation';
+import { useRouter, useParams } from 'next/navigation';
 import { useAuth, useUser, useFirestore, setDocumentNonBlocking, useMemoFirebase, useDoc, useCollection } from '@/firebase';
 import { doc, serverTimestamp, collection } from 'firebase/firestore';
 import { initiateAnonymousSignIn } from '@/firebase/non-blocking-login';
@@ -9,12 +9,9 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { ArrowLeft, User as UserIcon, Mic, Check, AlertCircle, Lock, Users, Settings2, ChevronDown, ChevronUp, Sparkles } from 'lucide-react';
+import { ArrowLeft, User as UserIcon, Mic, AlertCircle, Lock, Users, Settings2, Sparkles } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { cn } from '@/lib/utils';
 import { Progress } from '@/components/ui/progress';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 
 type RoomType = 'default' | 'custom';
@@ -22,7 +19,6 @@ type RoomType = 'default' | 'custom';
 export default function SetupPage() {
   const router = useRouter();
   const params = useParams();
-  const searchParams = useSearchParams();
   const sessionId = params.sessionId as string;
   const auth = useAuth();
   const firestore = useFirestore();
@@ -31,23 +27,19 @@ export default function SetupPage() {
   const [roomType, setRoomType] = useState<RoomType>('default');
   const [password, setPassword] = useState('');
   const [maxUsers, setMaxUsers] = useState('');
-  const [showRoomSettings, setShowRoomSettings] = useState(false);
   const [micPermission, setMicPermission] = useState<'prompt' | 'granted' | 'denied'>('prompt');
   const [volume, setVolume] = useState(0);
-  const [skipDeviceSetup, setSkipDeviceSetup] = useState(false);
   const [isJoining, setIsJoining] = useState(false);
   const [requiresPassword, setRequiresPassword] = useState(false);
   const [roomPassword, setRoomPassword] = useState('');
   const { toast } = useToast();
-  
-  // Audio refs
+
   const localStreamRef = useRef<MediaStream | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const animationFrameRef = useRef<number>();
 
-  // Check if room already exists and has max users limit
   const sessionRef = useMemoFirebase(
     () => (firestore ? doc(firestore, 'sessions', sessionId) : null),
     [firestore, sessionId]
@@ -59,13 +51,10 @@ export default function SetupPage() {
   const { data: sessionData } = useDoc<any>(sessionRef);
   const { data: users } = useCollection<any>(usersRef);
 
-  // Check if room requires password when session data loads
   useEffect(() => {
     if (sessionData?.password && !requiresPassword) {
-      // Room exists and has password, check if current user is the creator
       const isCreator = sessionData.createdBy === authUser?.uid;
       if (!isCreator) {
-        // User is not the creator, require password
         setRequiresPassword(true);
       }
     }
@@ -141,12 +130,10 @@ export default function SetupPage() {
 
   const handleJoin = async () => {
     if (!nameInput.trim() || !firestore || !authUser || !sessionId || isJoining) return;
-    
-    // Check password if room requires it and user is not the creator
+
     if (sessionData?.password) {
       const isCreator = sessionData.createdBy === authUser.uid;
       if (!isCreator) {
-        // User is not the creator, require password
         if (!roomPassword.trim()) {
           setRequiresPassword(true);
           toast({
@@ -156,7 +143,7 @@ export default function SetupPage() {
           });
           return;
         }
-        
+
         if (roomPassword.trim() !== sessionData.password) {
           toast({
             variant: 'destructive',
@@ -168,13 +155,12 @@ export default function SetupPage() {
         }
       }
     }
-    
+
     setIsJoining(true);
-    
-    // Check max users limit if room already exists
+
     const existingMaxUsers = sessionData?.maxUsers;
     const currentUserCount = users?.length || 0;
-    
+
     if (existingMaxUsers && currentUserCount >= existingMaxUsers) {
       toast({
         variant: 'destructive',
@@ -185,13 +171,11 @@ export default function SetupPage() {
       router.push('/');
       return;
     }
-    
+
     cleanupAudio();
-    
-    // Save username
+
     sessionStorage.setItem(`vortex-username-${sessionId}`, nameInput.trim());
-    
-    // Build session data
+
     const sessionDocRef = doc(firestore, 'sessions', sessionId);
     const newSessionData: any = {
       createdAt: serverTimestamp(),
@@ -199,12 +183,10 @@ export default function SetupPage() {
       id: sessionId,
       sessionLink: `/session/${sessionId}`,
     };
-    
-    // Only set createdBy if this is a new room
+
     if (!sessionData) {
       newSessionData.createdBy = authUser.uid;
-      
-      // Add optional fields for custom rooms
+
       if (roomType === 'custom') {
         if (password.trim()) {
           newSessionData.password = password.trim();
@@ -214,11 +196,10 @@ export default function SetupPage() {
         }
       }
     }
-    
+
     setDocumentNonBlocking(sessionDocRef, newSessionData, { merge: true });
     sessionStorage.setItem(`vortex-setup-complete-${sessionId}`, 'true');
-    
-    // Small delay to show loader before navigation
+
     setTimeout(() => {
       router.push(`/session/${sessionId}`);
     }, 100);
@@ -237,7 +218,6 @@ export default function SetupPage() {
     );
   }
 
-  const voiceActivity = volume > 10;
   const canJoin = nameInput.trim().length >= 2;
 
   return (
@@ -247,7 +227,7 @@ export default function SetupPage() {
         <Button variant="ghost" size="icon" className="absolute top-4 right-4 h-8 w-8" onClick={() => router.push('/')}>
           <ArrowLeft className="h-4 w-4" />
         </Button>
-        
+
         <CardHeader className="text-center pt-12 sm:pt-6">
           <CardTitle className="text-3xl font-bold">Enter the Vortex</CardTitle>
           <CardDescription className="text-muted-foreground pt-2">
@@ -256,7 +236,6 @@ export default function SetupPage() {
         </CardHeader>
 
         <CardContent className="space-y-6">
-          {/* Password Input - Show if room requires password */}
           {requiresPassword && sessionData?.password && (
             <div className="space-y-2">
               <Label htmlFor="room-password" className="text-sm font-medium">
@@ -286,7 +265,6 @@ export default function SetupPage() {
             </div>
           )}
 
-          {/* Username Input */}
           <div className="space-y-2">
             <Label htmlFor="name" className="text-sm font-medium">
               Your Name
@@ -309,19 +287,12 @@ export default function SetupPage() {
             </div>
           </div>
 
-          {/* Optional Room Settings - Only show for new rooms */}
           {!sessionData && (
-            <Collapsible open={showRoomSettings} onOpenChange={setShowRoomSettings}>
-              <CollapsibleTrigger asChild>
-                <Button variant="ghost" className="w-full justify-between p-2 h-auto">
-                  <div className="flex items-center gap-2">
-                    <Settings2 className="h-4 w-4" />
-                    <span className="text-sm font-medium">Room Settings (Optional)</span>
-                  </div>
-                  {showRoomSettings ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                </Button>
-              </CollapsibleTrigger>
-              <CollapsibleContent className="space-y-4 pt-2">
+            <div className="space-y-4">
+              <div className="flex items-center gap-2">
+                <Settings2 className="h-4 w-4" />
+                <span className="text-sm font-medium">Room Settings</span>
+              </div>
               <RadioGroup value={roomType} onValueChange={(value) => setRoomType(value as RoomType)}>
                 <div className="flex items-center space-x-2">
                   <RadioGroupItem value="default" id="default" />
@@ -379,62 +350,30 @@ export default function SetupPage() {
                   </div>
                 </div>
               )}
-              </CollapsibleContent>
-            </Collapsible>
+            </div>
           )}
 
-          {/* Device Setup (Optional) */}
           <div className="space-y-3 pt-2 border-t">
-            <div className="flex items-center justify-between">
-              <Label className="text-sm font-medium flex items-center gap-2">
-                <Mic className="h-4 w-4" />
-                Test Microphone (Optional)
-              </Label>
-              {micPermission === 'granted' && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    setSkipDeviceSetup(true);
-                    cleanupAudio();
-                  }}
-                  className="text-xs"
-                >
-                  Skip
-                </Button>
-              )}
-            </div>
+            <Label className="text-sm font-medium flex items-center gap-2">
+              <Mic className="h-4 w-4" />
+              Test Microphone
+            </Label>
 
-            {nameInput.trim() && (
-              <div className="flex items-center gap-4 p-4 rounded-lg bg-background border">
-                <div className="relative">
-                  <Avatar className={cn(
-                    "h-12 w-12 ring-2 ring-transparent transition-all duration-100",
-                    voiceActivity && "ring-green-500 ring-offset-2 ring-offset-background"
-                  )}>
-                    <AvatarFallback>{nameInput.substring(0, 2).toUpperCase()}</AvatarFallback>
-                  </Avatar>
-                </div>
-                <div className="flex-1 space-y-2">
-                  <p className="font-semibold text-sm">{nameInput}</p>
-                  {micPermission === 'prompt' && (
-                    <Button size="sm" onClick={requestMicPermission} className="w-full">
-                      <Mic className="mr-2 h-4 w-4" /> Allow Microphone
-                    </Button>
-                  )}
-                  {micPermission === 'granted' && (
-                    <>
-                      <p className="text-xs text-muted-foreground">Speak into your mic to test</p>
-                      <Progress value={volume} className="w-full h-2" />
-                    </>
-                  )}
-                  {micPermission === 'denied' && (
-                    <div className="flex items-center gap-2 text-xs text-destructive">
-                      <AlertCircle className="h-4 w-4" />
-                      <span>Microphone access denied</span>
-                    </div>
-                  )}
-                </div>
+            {micPermission === 'prompt' && (
+              <Button size="sm" onClick={requestMicPermission} className="w-full">
+                <Mic className="mr-2 h-4 w-4" /> Allow Microphone
+              </Button>
+            )}
+            {micPermission === 'granted' && (
+              <div className="space-y-2">
+                <p className="text-xs text-muted-foreground">Speak into your mic to test</p>
+                <Progress value={volume} className="w-full h-2" />
+              </div>
+            )}
+            {micPermission === 'denied' && (
+              <div className="flex items-center gap-2 text-xs text-destructive">
+                <AlertCircle className="h-4 w-4" />
+                <span>Microphone access denied</span>
               </div>
             )}
           </div>
@@ -454,10 +393,10 @@ export default function SetupPage() {
             ) : (
               <>
                 <Sparkles className="mr-2 h-5 w-5" />
-                {requiresPassword && !roomPassword.trim() 
-                  ? 'Enter Password to Continue' 
-                  : micPermission !== 'granted' 
-                    ? 'Allow Microphone to Join' 
+                {requiresPassword && !roomPassword.trim()
+                  ? 'Enter Password to Continue'
+                  : micPermission !== 'granted'
+                    ? 'Allow Microphone to Join'
                     : 'Join Room'}
               </>
             )}

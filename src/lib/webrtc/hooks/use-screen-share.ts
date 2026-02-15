@@ -24,11 +24,10 @@ export const useScreenShare = (
 
   const toggleScreenShare = useCallback(async () => {
     if (!firestore || !userId || !localStream) return;
-    
+
     const userDocRef = doc(firestore, 'sessions', sessionId, 'users', userId);
 
     if (isScreenSharing) {
-      // Stop screen sharing
       stopScreenShare(screenShareTrackRef.current);
 
       for (const peerId in peerConnections.current) {
@@ -82,4 +81,3 @@ export const useScreenShare = (
     toggleScreenShare,
   };
 };
-

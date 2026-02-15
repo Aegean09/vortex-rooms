@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Firestore, collection } from 'firebase/firestore';
 import { useUser, useCollection, useMemoFirebase } from '@/firebase';
-import { User as UIVer } from '@/components/vortex/user-list';
+import { User } from '@/interfaces/session';
 import { useAudioStream } from './hooks/use-audio-stream';
 import { useScreenShare } from './hooks/use-screen-share';
 import { usePeerConnections } from './hooks/use-peer-connections';
@@ -37,10 +37,8 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
   const [presenterId, setPresenterId] = useState<string | null>(null);
   const peerConnectionsRef = useRef<Record<string, any>>({});
 
-  // Audio stream management
   const { rawStream, localStream, noiseGateThreshold, setNoiseGateThreshold } = useAudioStream(user?.uid || null);
 
-  // Screen share management
   const { isScreenSharing, screenShareStream: screenShare, toggleScreenShare } = useScreenShare(
     firestore,
     sessionId,
@@ -50,14 +48,12 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
     peerConnectionsRef
   );
 
-  // Users collection
   const usersCollectionRef = useMemoFirebase(
     () => (firestore ? collection(firestore, 'sessions', sessionId, 'users') : null),
     [firestore, sessionId]
   );
-  const { data: users } = useCollection<UIVer>(usersCollectionRef);
+  const { data: users } = useCollection<User>(usersCollectionRef);
 
-  // Update presenter ID
   useEffect(() => {
     if (users) {
       const presenter = users.find(u => u.isScreenSharing);
@@ -65,12 +61,10 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
     }
   }, [users]);
 
-  // Update screen share stream
   useEffect(() => {
     setScreenShareStream(screenShare);
   }, [screenShare]);
 
-  // Handle remote tracks
   const handleRemoteTrack = useCallback((peerId: string, track: MediaStreamTrack, trackType: 'audio' | 'video') => {
     if (trackType === 'audio') {
       setRemoteStreams(prev => addTrackToRemoteStream(prev, peerId, track));
@@ -81,7 +75,6 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
     setScreenShareStream(new MediaStream([track]));
   }, []);
 
-  // Peer connections management
   usePeerConnections({
     firestore,
     sessionId,
@@ -94,7 +87,6 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
     peerConnectionsRef,
   });
 
-  // Mute/deafen controls
   const toggleMute = useCallback(() => {
     if (localStream) {
       const newMutedState = !isMuted;
@@ -151,4 +143,3 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
     </WebRTCContext.Provider>
   );
 };
-
