@@ -16,6 +16,8 @@ import { addDoc, collection, serverTimestamp, Timestamp } from 'firebase/firesto
 import { nanoid } from 'nanoid';
 import { useWebRTC } from '@/lib/webrtc/provider';
 
+export const MAX_USERS_PER_SUB_SESSION = 10;
+
 export interface SubSession {
   id: string;
   name: string;
@@ -61,6 +63,8 @@ export function SubSessionList({ subSessions, users, currentUser, onSubSessionCh
   }, [users, subSessions]);
   
   const handleJoinChannel = (subSessionId: string) => {
+    const count = (usersBySubSession[subSessionId] || []).length;
+    if (count >= MAX_USERS_PER_SUB_SESSION) return; // Room full
     onSubSessionChange(subSessionId);
     if (!openItems.includes(subSessionId)) {
       setOpenItems(prev => [...prev, subSessionId]);
@@ -127,6 +131,8 @@ export function SubSessionList({ subSessions, users, currentUser, onSubSessionCh
         {subSessions.map((subSession) => {
           const sessionUsers = usersBySubSession[subSession.id] || [];
           const isCurrentUserInSession = currentUser?.subSessionId === subSession.id;
+          const isFull = sessionUsers.length >= MAX_USERS_PER_SUB_SESSION;
+          const countLabel = `${sessionUsers.length}/${MAX_USERS_PER_SUB_SESSION}`;
 
           return (
             <AccordionItem value={subSession.id} key={subSession.id} className="border-b-0">
@@ -140,6 +146,14 @@ export function SubSessionList({ subSessions, users, currentUser, onSubSessionCh
                   <div className="flex items-center gap-2">
                     <Volume2 className="h-4 w-4" />
                     <span>{subSession.name}</span>
+                    <span
+                      className={cn(
+                        "font-normal tabular-nums",
+                        isCurrentUserInSession ? "text-accent-foreground opacity-90" : "text-muted-foreground"
+                      )}
+                    >
+                      {countLabel}
+                    </span>
                   </div>
                 </AccordionTrigger>
                 {!isCurrentUserInSession && (
@@ -147,12 +161,14 @@ export function SubSessionList({ subSessions, users, currentUser, onSubSessionCh
                       variant="secondary" 
                       size="sm" 
                       className="h-6 px-2"
+                      disabled={isFull}
+                      title={isFull ? `Room full (${countLabel})` : undefined}
                       onClick={(e) => {
                         e.stopPropagation();
                         handleJoinChannel(subSession.id);
                       }}
                     >
-                      Join
+                      {isFull ? 'Full' : 'Join'}
                     </Button>
                 )}
               </div>

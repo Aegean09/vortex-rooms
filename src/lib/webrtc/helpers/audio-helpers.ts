@@ -2,6 +2,12 @@
  * Audio processing helper functions
  */
 
+import { loadRnnoise, RnnoiseWorkletNode } from '@sapphi-red/web-noise-suppressor';
+
+const RNNNOISE_WORKLET_URL = '/audio-worklets/rnnoise-worklet.js';
+const RNNNOISE_WASM_URL = '/audio-worklets/rnnoise.wasm';
+const RNNNOISE_SIMD_URL = '/audio-worklets/rnnoise_simd.wasm';
+
 export interface NoiseGateConfig {
   threshold: number;
   fftSize?: number;
@@ -105,14 +111,15 @@ export interface NoiseSuppressionConfig {
 export interface NoiseSuppressionNodes {
   audioContext: AudioContext;
   source: MediaStreamAudioSourceNode;
-  workletNode: AudioWorkletNode | null;
+  workletNode: (AudioWorkletNode & { destroy?: () => void }) | null;
   analyser: AnalyserNode;
   gainNode: GainNode;
   destination: MediaStreamAudioDestinationNode;
 }
 
 /**
- * Creates audio processing nodes with noise suppression support
+ * Creates audio processing nodes with Rnnoise (AI) noise suppression when enabled.
+ * Uses xiph/rnnoise via @sapphi-red/web-noise-suppressor for much better keyboard/background noise reduction.
  */
 export const createAudioNodesWithNoiseSuppression = async (
   rawStream: MediaStream,
@@ -128,33 +135,29 @@ export const createAudioNodesWithNoiseSuppression = async (
   const gainNode = audioContext.createGain();
   const destination = audioContext.createMediaStreamDestination();
 
-  let workletNode: AudioWorkletNode | null = null;
+  let workletNode: (AudioWorkletNode & { destroy?: () => void }) | null = null;
 
-  // Load and create AudioWorklet for noise suppression if enabled
   if (noiseSuppressionConfig.enabled) {
     try {
-      // Load the AudioWorklet processor
-      await audioContext.audioWorklet.addModule('/audio-worklets/noise-suppression-processor.js');
-      
-      // Create the worklet node
-      workletNode = new AudioWorkletNode(audioContext, 'noise-suppression-processor', {
-        processorOptions: {
-          intensity: noiseSuppressionConfig.intensity,
-        },
+      const wasmBinary = await loadRnnoise({
+        url: RNNNOISE_WASM_URL,
+        simdUrl: RNNNOISE_SIMD_URL,
       });
-
-      // Connect: source -> worklet -> analyser -> gain -> destination
-      source.connect(workletNode);
-      workletNode.connect(analyser);
-      workletNode.connect(gainNode);
+      await audioContext.audioWorklet.addModule(RNNNOISE_WORKLET_URL);
+      const rnnoise = new RnnoiseWorkletNode(audioContext, {
+        wasmBinary,
+        maxChannels: 2,
+      });
+      workletNode = rnnoise;
+      source.connect(rnnoise);
+      rnnoise.connect(analyser);
+      rnnoise.connect(gainNode);
     } catch (error) {
-      console.warn('Failed to load noise suppression AudioWorklet, falling back to direct connection:', error);
-      // Fallback: connect without worklet
+      console.warn('Failed to load Rnnoise noise suppression, falling back to direct connection:', error);
       source.connect(analyser);
       source.connect(gainNode);
     }
   } else {
-    // No noise suppression: connect directly
     source.connect(analyser);
     source.connect(gainNode);
   }
@@ -191,7 +194,7 @@ export const resetNoiseSuppression = (workletNode: AudioWorkletNode | null): voi
 };
 
 /**
- * Cleans up noise suppression nodes
+ * Cleans up noise suppression nodes. Calls destroy() on Rnnoise node when present.
  */
 export const cleanupNoiseSuppressionNodes = (
   nodes: Partial<NoiseSuppressionNodes>,
@@ -201,6 +204,9 @@ export const cleanupNoiseSuppressionNodes = (
     cancelAnimationFrame(animationFrameId);
   }
   if (nodes.workletNode) {
+    if (typeof (nodes.workletNode as { destroy?: () => void }).destroy === 'function') {
+      (nodes.workletNode as RnnoiseWorkletNode).destroy();
+    }
     nodes.workletNode.disconnect();
   }
   if (nodes.source) {

@@ -93,13 +93,14 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
   const [screenShareStream, setScreenShareStream] = useState<MediaStream | null>(null);
   const screenShareTrackRef = useRef<MediaStreamTrack | null>(null);
   const [presenterId, setPresenterId] = useState<string | null>(null);
-  const [noiseGateThreshold, setNoiseGateThreshold] = useState<number>(0.126); // Default threshold %70 (RMS value)
+  // Noise gate: 40% sensitivity = -36 dB -> RMS ≈ 0.0158
+  const [noiseGateThreshold, setNoiseGateThreshold] = useState<number>(() => Math.pow(10, (-60 + 40 * 0.6) / 20)); // 40%
   const [pushToTalk, setPushToTalk] = useState<boolean>(false);
   const [pushToTalkKey, setPushToTalkKey] = useState<string>('Space'); // Default: Space key
   const [isPressingPushToTalkKey, setIsPressingPushToTalkKey] = useState<boolean>(false);
   const prevPushToTalkRef = useRef(false);
-  const [noiseSuppressionEnabled, setNoiseSuppressionEnabled] = useState<boolean>(false);
-  const [noiseSuppressionIntensity, setNoiseSuppressionIntensity] = useState<number>(0.5); // Default: Medium (0.5)
+  const [noiseSuppressionEnabled, setNoiseSuppressionEnabled] = useState<boolean>(true); // Default: ON
+  const [noiseSuppressionIntensity, setNoiseSuppressionIntensity] = useState<number>(1); // Rnnoise fixed strength, no UI
 
   // Remote voice activity detection
   const remoteVoiceActivity = useRemoteVoiceActivity({
