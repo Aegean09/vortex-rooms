@@ -13,7 +13,7 @@ import { type User } from '@/interfaces/session';
 import { Skeleton } from '@/components/ui/skeleton';
 import { WebRTCProvider } from '@/lib/webrtc/provider';
 import { Button } from '@/components/ui/button';
-import { PanelLeft, Users } from 'lucide-react';
+import { PanelLeft, Users, Sparkles } from 'lucide-react';
 import {
   Sheet,
   SheetContent,
@@ -158,9 +158,17 @@ export default function SessionPage() {
               </Button>
             </SheetTrigger>
             <SheetContent side="left" className="w-[300px] p-0 flex flex-col bg-card">
-              <SheetHeader className="flex flex-row items-center gap-2 p-4 border-b">
-                <Users className="h-5 w-5 text-muted-foreground" />
-                <SheetTitle>Participants ({users?.length || 0})</SheetTitle>
+              <SheetHeader className="flex flex-col gap-3 p-4 border-b">
+                <div className="flex items-center gap-2">
+                  <div className="p-1.5 rounded-md bg-primary/15">
+                    <Sparkles className="h-4 w-4 text-primary" />
+                  </div>
+                  <span className="text-base font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-primary to-accent">Vortex</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Users className="h-4 w-4 text-muted-foreground" />
+                  <SheetTitle className="text-sm">Participants ({users?.length || 0})</SheetTitle>
+                </div>
               </SheetHeader>
               <SubSessionList
                 subSessions={sortedSubSessions}
@@ -177,6 +185,12 @@ export default function SessionPage() {
 
         <div className="flex flex-1 gap-4 min-h-0">
           <aside className="w-[300px] hidden md:flex flex-col gap-4">
+            <div className="flex items-center gap-2 px-1">
+              <div className="p-1.5 rounded-md bg-primary/15">
+                <Sparkles className="h-4 w-4 text-primary" />
+              </div>
+              <span className="text-base font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-primary to-accent">Vortex</span>
+            </div>
             <ShareLink />
             <SubSessionList
               subSessions={sortedSubSessions}

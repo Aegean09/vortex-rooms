@@ -39,7 +39,6 @@ export function ShareLink() {
   return (
     <div className="space-y-3 flex-1">
       <div className="flex items-center justify-between">
-        <p className="text-sm font-medium text-foreground">Share this room</p>
         {sessionData && (
           <div className="flex items-center gap-2">
             {sessionData.password && (

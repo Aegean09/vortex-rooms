@@ -119,7 +119,7 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
   const localVoiceActivity = pushToTalk && !isPressingPushToTalkKey ? false : rawLocalVoiceActivity;
 
   const audioNodesRef = useRef<NoiseSuppressionNodes | null>(null);
-  const animationFrameRef = useRef<number | undefined>(undefined);
+  const noiseGateTimerRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
 
   const isMutedRef = useRef(isMuted);
   const pushToTalkRef = useRef(pushToTalk);
@@ -375,8 +375,8 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
   }, [selectedDeviceId]);
 
   const startNoiseGateLoop = useCallback((nodes: NoiseSuppressionNodes) => {
-    if (animationFrameRef.current) {
-      cancelAnimationFrame(animationFrameRef.current);
+    if (noiseGateTimerRef.current) {
+      clearInterval(noiseGateTimerRef.current);
     }
 
     const dataArray = new Uint8Array(nodes.analyser.frequencyBinCount);
@@ -387,7 +387,6 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
       }
 
       if (!nodes.analyser || !nodes.gainNode || nodes.audioContext?.state !== 'running') {
-        animationFrameRef.current = requestAnimationFrame(processNoiseGate);
         return;
       }
 
@@ -402,11 +401,9 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
 
       const shouldMute = isMutedRef.current || (pushToTalkRef.current && !isPressingPushToTalkKeyRef.current);
       nodes.gainNode.gain.value = (!shouldMute && rms > noiseGateThresholdRef.current) ? 1.0 : 0.0;
-
-      animationFrameRef.current = requestAnimationFrame(processNoiseGate);
     };
 
-    processNoiseGate();
+    noiseGateTimerRef.current = setInterval(processNoiseGate, 50);
   }, []);
 
   useEffect(() => {
@@ -415,11 +412,12 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
       return;
     }
 
-    if (animationFrameRef.current) {
-      cancelAnimationFrame(animationFrameRef.current);
+    if (noiseGateTimerRef.current) {
+      clearInterval(noiseGateTimerRef.current);
+      noiseGateTimerRef.current = undefined;
     }
     if (audioNodesRef.current) {
-      cleanupNoiseSuppressionNodes(audioNodesRef.current, animationFrameRef.current);
+      cleanupNoiseSuppressionNodes(audioNodesRef.current);
       audioNodesRef.current = null;
     }
 
@@ -438,7 +436,7 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
       }
     ).then((nodes) => {
       if (!isMounted) {
-        cleanupNoiseSuppressionNodes(nodes, animationFrameRef.current);
+        cleanupNoiseSuppressionNodes(nodes);
         return;
       }
 
@@ -482,11 +480,12 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
 
     return () => {
       isMounted = false;
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current);
+      if (noiseGateTimerRef.current) {
+        clearInterval(noiseGateTimerRef.current);
+        noiseGateTimerRef.current = undefined;
       }
       if (audioNodesRef.current) {
-        cleanupNoiseSuppressionNodes(audioNodesRef.current, animationFrameRef.current);
+        cleanupNoiseSuppressionNodes(audioNodesRef.current);
         audioNodesRef.current = null;
       }
     };
