@@ -47,7 +47,7 @@ export function ChatArea({ messages, onSendMessage, channelName }: ChatAreaProps
             <div className="p-4 rounded-full bg-primary/10 border border-primary/20 mb-5">
               <MessageCircle className="h-8 w-8 text-primary/60" />
             </div>
-            <h3 className="text-lg font-semibold text-foreground mb-1">Welcome to #{channelName}</h3>
+            <h3 className="text-lg font-semibold text-foreground mb-1">Welcome to Vortex</h3>
             <p className="text-sm text-muted-foreground mb-6 max-w-xs">
               This is the start of the channel. Invite your friends and start chatting!
             </p>
