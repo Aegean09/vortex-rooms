@@ -272,7 +272,6 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
 
   const toggleScreenShare = useCallback(async () => {
     if (!firestore || !user || !localStream) return;
-    if (!isScreenSharing && subSessionId === 'general') return;
     if (!isScreenSharing && presenterId && presenterId !== user.uid) return;
     const userDocRef = doc(firestore, 'sessions', sessionId, 'users', user.uid);
 

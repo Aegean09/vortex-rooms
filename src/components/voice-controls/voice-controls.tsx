@@ -448,15 +448,12 @@ export function VoiceControls({ currentUser, onAvatarChange }: VoiceControlsProp
           </Popover>
 
           {!isMobile && (() => {
-            const isInGeneral = currentUser?.subSessionId === 'general' || !currentUser?.subSessionId;
-            const isDisabled = !isScreenSharing && (!!presenterId || isInGeneral);
+            const isDisabled = !isScreenSharing && !!presenterId;
             const tooltipText = isScreenSharing
               ? 'Stop Sharing'
-              : isInGeneral
-                ? 'Screen share is disabled in General for performance reasons. Join a sub-channel to share.'
-                : presenterId
-                  ? 'Someone is already sharing'
-                  : 'Share Screen';
+              : presenterId
+                ? 'Someone is already sharing'
+                : 'Share Screen';
 
             return (
               <Tooltip>
@@ -472,7 +469,7 @@ export function VoiceControls({ currentUser, onAvatarChange }: VoiceControlsProp
                     </Button>
                   </span>
                 </TooltipTrigger>
-                <TooltipContent className="max-w-[220px]">
+                <TooltipContent>
                   <p>{tooltipText}</p>
                 </TooltipContent>
               </Tooltip>
