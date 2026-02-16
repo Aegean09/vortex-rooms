@@ -235,6 +235,7 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
 
   const toggleScreenShare = useCallback(async () => {
     if (!firestore || !user || !localStream) return;
+    if (!isScreenSharing && presenterId && presenterId !== user.uid) return;
     const userDocRef = doc(firestore, 'sessions', sessionId, 'users', user.uid);
 
     if (isScreenSharing) {
@@ -286,7 +287,7 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
         throw err;
       }
     }
-  }, [isScreenSharing, firestore, user, sessionId, localPeerId, localStream]);
+  }, [isScreenSharing, firestore, user, sessionId, localPeerId, localStream, presenterId]);
 
   const enumerateAudioDevices = useCallback(async () => {
     try {

@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useCallback, useState } from 'react';
+import { useMemo, useCallback, useState, useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import { ChatArea } from '@/components/chat-area/chat-area';
 import { SubSessionList } from '@/components/subsession-list/subsession-list';
@@ -13,7 +13,7 @@ import { type User } from '@/interfaces/session';
 import { Skeleton } from '@/components/ui/skeleton';
 import { WebRTCProvider } from '@/lib/webrtc/provider';
 import { Button } from '@/components/ui/button';
-import { PanelLeft, Users, Sparkles } from 'lucide-react';
+import { PanelLeft, Users, Sparkles, Monitor, MessageSquare } from 'lucide-react';
 import {
   Sheet,
   SheetContent,
@@ -102,6 +102,7 @@ export default function SessionPage() {
     subSessionId: activeTextChannelId,
   });
 
+  const [showScreenShare, setShowScreenShare] = useState(false);
   const [localAvatarSeed, setLocalAvatarSeed] = useState<string | null>(null);
 
   const effectiveAvatarSeed = localAvatarSeed ?? avatarSeed;
@@ -117,6 +118,14 @@ export default function SessionPage() {
     }
     return null;
   }, [authUser, username, avatarStyle, effectiveAvatarSeed]);
+
+  useEffect(() => {
+    if (isSomeoneScreenSharing) {
+      setShowScreenShare(true);
+    } else {
+      setShowScreenShare(false);
+    }
+  }, [isSomeoneScreenSharing]);
 
   const handleAvatarChange = useCallback((newSeed: string) => {
     setLocalAvatarSeed(newSeed);
@@ -204,16 +213,38 @@ export default function SessionPage() {
           </aside>
 
           <div className="flex flex-col flex-1 gap-4 min-h-0">
-            <div className={cn("flex-1 min-h-0 transition-all duration-300", { "hidden": isSomeoneScreenSharing })}>
+            {isSomeoneScreenSharing && (
+              <div className="flex items-center gap-1 flex-shrink-0">
+                <Button
+                  variant={showScreenShare ? 'default' : 'ghost'}
+                  size="sm"
+                  className="h-7 gap-1.5 text-xs"
+                  onClick={() => setShowScreenShare(true)}
+                >
+                  <Monitor className="h-3.5 w-3.5" />
+                  Screen
+                </Button>
+                <Button
+                  variant={!showScreenShare ? 'default' : 'ghost'}
+                  size="sm"
+                  className="h-7 gap-1.5 text-xs"
+                  onClick={() => setShowScreenShare(false)}
+                >
+                  <MessageSquare className="h-3.5 w-3.5" />
+                  Chat
+                </Button>
+              </div>
+            )}
+            <div className={cn("flex-1 min-h-0", { "hidden": isSomeoneScreenSharing && showScreenShare })}>
               <ChatArea
                 messages={messages}
                 onSendMessage={handleSendMessage}
                 channelName={activeTextChannelName}
               />
             </div>
-            {isSomeoneScreenSharing && (
+            {isSomeoneScreenSharing && showScreenShare && (
               <div className="flex-1 min-h-0">
-                <ScreenShareView presenterId={presenter?.id ?? null} />
+                <ScreenShareView presenterName={presenter?.name} />
               </div>
             )}
             <div className="hidden md:flex items-center justify-start gap-4">
