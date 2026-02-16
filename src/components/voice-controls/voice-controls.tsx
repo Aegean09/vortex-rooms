@@ -47,6 +47,7 @@ export function VoiceControls({ currentUser, onAvatarChange }: VoiceControlsProp
     toggleDeafen,
     isScreenSharing,
     toggleScreenShare,
+    presenterId,
     noiseGateThreshold,
     setNoiseGateThreshold,
     pushToTalk,
@@ -446,15 +447,20 @@ export function VoiceControls({ currentUser, onAvatarChange }: VoiceControlsProp
             </PopoverContent>
           </Popover>
 
-          {false && !isMobile && (
+          {!isMobile && (
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button variant={isScreenSharing ? 'destructive' : 'secondary'} size="icon" onClick={handleToggleScreenShare}>
+                <Button
+                  variant={isScreenSharing ? 'destructive' : 'secondary'}
+                  size="icon"
+                  onClick={handleToggleScreenShare}
+                  disabled={!isScreenSharing && !!presenterId}
+                >
                   {isScreenSharing ? <ScreenShareOff className="h-5 w-5" /> : <ScreenShare className="h-5 w-5" />}
                 </Button>
               </TooltipTrigger>
               <TooltipContent>
-                <p>{isScreenSharing ? 'Stop Sharing' : 'Share Screen'}</p>
+                <p>{isScreenSharing ? 'Stop Sharing' : presenterId ? 'Someone is already sharing' : 'Share Screen'}</p>
               </TooltipContent>
             </Tooltip>
           )}
