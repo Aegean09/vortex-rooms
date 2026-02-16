@@ -147,6 +147,18 @@ service cloud.firestore {
     }
 
     /**
+     * @description Manages text channels within a session, independent of voice channels.
+     * @path /sessions/{sessionId}/textchannels/{textChannelId}
+     * @allow (get, list) All authenticated users can see the text channels.
+     * @allow (create) Any authenticated user can create a new text channel.
+     */
+    match /sessions/{sessionId}/textchannels/{textChannelId} {
+      allow get, list: if isSignedIn();
+      allow create: if isSignedIn();
+      allow delete: if isParticipant(sessionId);
+    }
+
+    /**
      * @description Manages WebRTC signaling documents for establishing peer-to-peer connections.
      * @path /sessions/{sessionId}/calls/{callId}
      * @allow (read, write) Any authenticated user can read and write to the signaling documents.

@@ -12,6 +12,7 @@ interface UseProcessedMessagesParams {
   authUser: FirebaseUser | null | undefined;
   username: string | null;
   sessionId: string;
+  subSessionId: string;
 }
 
 export const useProcessedMessages = ({
@@ -22,10 +23,15 @@ export const useProcessedMessages = ({
   authUser,
   username,
   sessionId,
+  subSessionId,
 }: UseProcessedMessagesParams) => {
   const messages: Message[] = useMemo(() => {
     if (!messagesData || !users) return [];
     return messagesData
+      .filter((msg) => {
+        if (!msg.subSessionId) return subSessionId === 'general';
+        return msg.subSessionId === subSessionId;
+      })
       .map((msg) => {
         const user = users.find((u) => u.id === msg.userId);
         return {
@@ -48,7 +54,7 @@ export const useProcessedMessages = ({
             minute: '2-digit',
           }) || 'sending...',
       }));
-  }, [messagesData, users]);
+  }, [messagesData, users, subSessionId]);
 
   const handleSendMessage = useCallback(
     (text: string) => {
@@ -56,11 +62,12 @@ export const useProcessedMessages = ({
       addDoc(messagesRef, {
         userId: authUser.uid,
         sessionId,
+        subSessionId,
         content: text,
         timestamp: serverTimestamp(),
       }).catch(() => {});
     },
-    [username, authUser, messagesRef, sessionRef, sessionId]
+    [username, authUser, messagesRef, sessionRef, sessionId, subSessionId]
   );
 
   return { messages, handleSendMessage };

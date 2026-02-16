@@ -2,13 +2,12 @@
 
 import React, { useMemo, useState, useEffect } from 'react';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
-import { Volume2, Users, Plus, MicOff, HeadphoneOff } from 'lucide-react';
+import { Volume2, Users, Plus, MicOff, HeadphoneOff, Hash } from 'lucide-react';
 import { DiceBearAvatar } from '@/components/dicebear-avatar/dicebear-avatar';
 import { type User, type SubSession } from '@/interfaces/session';
-// import { MAX_USERS_PER_SUB_SESSION } from '@/constants/common';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { useFirestore } from '@/firebase';
 import { useParams } from 'next/navigation';
@@ -21,12 +20,17 @@ interface SubSessionListProps {
   users: User[];
   currentUser: User | null;
   onSubSessionChange: (subSessionId: string) => void;
+  textChannels?: SubSession[];
+  activeTextChannelId?: string;
+  onTextChannelChange?: (channelId: string) => void;
 }
 
-export function SubSessionList({ subSessions, users, currentUser, onSubSessionChange }: SubSessionListProps) {
+export function SubSessionList({ subSessions, users, currentUser, onSubSessionChange, textChannels, activeTextChannelId, onTextChannelChange }: SubSessionListProps) {
   const [openItems, setOpenItems] = useState<string[]>([]);
   const [newChannelName, setNewChannelName] = useState('');
   const [isAlertOpen, setIsAlertOpen] = useState(false);
+  const [newTextChannelName, setNewTextChannelName] = useState('');
+  const [isTextDialogOpen, setIsTextDialogOpen] = useState(false);
   const firestore = useFirestore();
   const params = useParams();
   const sessionId = params.sessionId as string;
@@ -36,7 +40,6 @@ export function SubSessionList({ subSessions, users, currentUser, onSubSessionCh
     if (currentUser?.subSessionId && !openItems.includes(currentUser.subSessionId)) {
       setOpenItems(prev => [...prev, currentUser.subSessionId!]);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUser?.subSessionId]);
 
   const usersBySubSession = useMemo(() => {
@@ -53,8 +56,6 @@ export function SubSessionList({ subSessions, users, currentUser, onSubSessionCh
   }, [users, subSessions]);
 
   const handleJoinChannel = (subSessionId: string) => {
-    // const count = (usersBySubSession[subSessionId] || []).length;
-    // if (count >= MAX_USERS_PER_SUB_SESSION) return;
     onSubSessionChange(subSessionId);
     if (!openItems.includes(subSessionId)) {
       setOpenItems(prev => [...prev, subSessionId]);
@@ -77,6 +78,23 @@ export function SubSessionList({ subSessions, users, currentUser, onSubSessionCh
     setIsAlertOpen(false);
   };
 
+  const handleCreateTextChannel = async () => {
+    if (!newTextChannelName.trim() || !firestore || !sessionId) return;
+
+    const channelId = nanoid(10);
+    const textChannelsRef = collection(firestore, 'sessions', sessionId, 'textchannels');
+
+    await addDoc(textChannelsRef, {
+      id: channelId,
+      name: newTextChannelName.trim(),
+      createdAt: serverTimestamp(),
+    });
+
+    setNewTextChannelName('');
+    setIsTextDialogOpen(false);
+    onTextChannelChange?.(channelId);
+  };
+
   return (
     <div className="w-full h-full flex flex-col bg-card/50 rounded-lg border border-border p-2">
       <div className="flex items-center justify-between p-2 mb-2">
@@ -84,31 +102,32 @@ export function SubSessionList({ subSessions, users, currentUser, onSubSessionCh
           <Users className="h-5 w-5 mr-2 text-muted-foreground"/>
           <h2 className="text-lg font-semibold tracking-tight">Channels</h2>
         </div>
-        <AlertDialog open={isAlertOpen} onOpenChange={setIsAlertOpen}>
-          <AlertDialogTrigger asChild>
+        <Dialog open={isAlertOpen} onOpenChange={(open) => { setIsAlertOpen(open); if (!open) setNewChannelName(''); }}>
+          <DialogTrigger asChild>
             <Button variant="ghost" size="icon" className="h-7 w-7">
               <Plus className="h-4 w-4" />
             </Button>
-          </AlertDialogTrigger>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>Create New Channel</AlertDialogTitle>
-              <AlertDialogDescription>
+          </DialogTrigger>
+          <DialogContent showCloseButton={false}>
+            <DialogHeader>
+              <DialogTitle>Create New Channel</DialogTitle>
+              <DialogDescription>
                 Enter a name for your new voice channel.
-              </AlertDialogDescription>
-            </AlertDialogHeader>
+              </DialogDescription>
+            </DialogHeader>
             <Input
               placeholder="e.g. Lounge"
               value={newChannelName}
               onChange={(e) => setNewChannelName(e.target.value)}
               maxLength={20}
+              autoFocus
             />
-            <AlertDialogFooter>
-              <AlertDialogCancel onClick={() => setNewChannelName('')}>Cancel</AlertDialogCancel>
-              <AlertDialogAction onClick={handleCreateChannel} disabled={!newChannelName.trim()}>Create</AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => { setNewChannelName(''); setIsAlertOpen(false); }}>Cancel</Button>
+              <Button onClick={handleCreateChannel} disabled={!newChannelName.trim()}>Create</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
       <Accordion
         type="multiple"
@@ -119,8 +138,6 @@ export function SubSessionList({ subSessions, users, currentUser, onSubSessionCh
         {subSessions.map((subSession) => {
           const sessionUsers = usersBySubSession[subSession.id] || [];
           const isCurrentUserInSession = currentUser?.subSessionId === subSession.id;
-          // const isFull = sessionUsers.length >= MAX_USERS_PER_SUB_SESSION;
-          // const countLabel = `${sessionUsers.length}/${MAX_USERS_PER_SUB_SESSION}`;
           const countLabel = `${sessionUsers.length}`;
 
           return (
@@ -143,7 +160,6 @@ export function SubSessionList({ subSessions, users, currentUser, onSubSessionCh
                     </span>
                   </div>
                 </AccordionTrigger>
-                {/* disabled={isFull} title={isFull ? `Room full (${countLabel})` : undefined} */}
                 {!isCurrentUserInSession && (
                   <Button
                     variant="secondary"
@@ -224,6 +240,60 @@ export function SubSessionList({ subSessions, users, currentUser, onSubSessionCh
           );
         })}
       </Accordion>
+
+      {onTextChannelChange && textChannels && (
+        <div className="mt-3 pt-3 border-t border-border/50">
+          <div className="flex items-center justify-between px-2 mb-2">
+            <div className="flex items-center">
+              <Hash className="h-4 w-4 mr-2 text-muted-foreground" />
+              <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Text Channels</span>
+            </div>
+            <Dialog open={isTextDialogOpen} onOpenChange={(open) => { setIsTextDialogOpen(open); if (!open) setNewTextChannelName(''); }}>
+              <DialogTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-6 w-6">
+                  <Plus className="h-3.5 w-3.5" />
+                </Button>
+              </DialogTrigger>
+              <DialogContent showCloseButton={false}>
+                <DialogHeader>
+                  <DialogTitle>Create Text Channel</DialogTitle>
+                  <DialogDescription>
+                    Enter a name for your new text channel.
+                  </DialogDescription>
+                </DialogHeader>
+                <Input
+                  placeholder="e.g. memes"
+                  value={newTextChannelName}
+                  onChange={(e) => setNewTextChannelName(e.target.value)}
+                  maxLength={20}
+                  autoFocus
+                />
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => { setNewTextChannelName(''); setIsTextDialogOpen(false); }}>Cancel</Button>
+                  <Button onClick={handleCreateTextChannel} disabled={!newTextChannelName.trim()}>Create</Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+          </div>
+          <div className="space-y-0.5 pl-2">
+            {textChannels.map((channel) => (
+              <button
+                key={`text-${channel.id}`}
+                onClick={() => onTextChannelChange(channel.id)}
+                className={cn(
+                  "w-full flex items-center gap-2 py-1.5 px-3 rounded-md text-sm transition-colors",
+                  activeTextChannelId === channel.id
+                    ? "bg-primary/15 text-primary font-medium"
+                    : "text-muted-foreground hover:bg-accent/50 hover:text-foreground"
+                )}
+              >
+                <Hash className="h-3.5 w-3.5" />
+                <span>{channel.name}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
