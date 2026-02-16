@@ -235,6 +235,7 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
 
   const toggleScreenShare = useCallback(async () => {
     if (!firestore || !user || !localStream) return;
+    if (!isScreenSharing && subSessionId === 'general') return;
     if (!isScreenSharing && presenterId && presenterId !== user.uid) return;
     const userDocRef = doc(firestore, 'sessions', sessionId, 'users', user.uid);
 
@@ -287,7 +288,7 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
         throw err;
       }
     }
-  }, [isScreenSharing, firestore, user, sessionId, localPeerId, localStream, presenterId]);
+  }, [isScreenSharing, firestore, user, sessionId, localPeerId, localStream, presenterId, subSessionId]);
 
   const enumerateAudioDevices = useCallback(async () => {
     try {
@@ -671,6 +672,11 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
                 localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
                 peerConnections.current[remotePeerId] = pc;
                 await handleOffer(firestore, change.doc.ref, pc, offerDescription);
+              } else {
+                const pc = peerConnections.current[remotePeerId];
+                if (pc && pc.signalingState === 'stable' && !callData.answer) {
+                  await handleOffer(firestore, change.doc.ref, pc, offerDescription);
+                }
               }
             }
           }

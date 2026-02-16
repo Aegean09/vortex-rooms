@@ -2,7 +2,7 @@
 
 import React, { useMemo, useState, useEffect } from 'react';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
-import { Volume2, Users, Plus, MicOff, HeadphoneOff, Hash } from 'lucide-react';
+import { Volume2, Users, Plus, MicOff, HeadphoneOff, Hash, Info } from 'lucide-react';
 import { DiceBearAvatar } from '@/components/dicebear-avatar/dicebear-avatar';
 import { type User, type SubSession } from '@/interfaces/session';
 import { Button } from '@/components/ui/button';
@@ -14,6 +14,10 @@ import { useParams } from 'next/navigation';
 import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
 import { nanoid } from 'nanoid';
 import { useWebRTC } from '@/lib/webrtc/provider';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { useToast } from '@/hooks/use-toast';
+
+const MAX_ROOM_CAPACITY = 10;
 
 interface SubSessionListProps {
   subSessions: SubSession[];
@@ -35,6 +39,7 @@ export function SubSessionList({ subSessions, users, currentUser, onSubSessionCh
   const params = useParams();
   const sessionId = params.sessionId as string;
   const { remoteVoiceActivity, localVoiceActivity, isMuted, isDeafened } = useWebRTC();
+  const { toast } = useToast();
 
   useEffect(() => {
     if (currentUser?.subSessionId && !openItems.includes(currentUser.subSessionId)) {
@@ -56,6 +61,17 @@ export function SubSessionList({ subSessions, users, currentUser, onSubSessionCh
   }, [users, subSessions]);
 
   const handleJoinChannel = (subSessionId: string) => {
+    if (subSessionId !== 'general') {
+      const usersInRoom = usersBySubSession[subSessionId]?.length ?? 0;
+      if (usersInRoom >= MAX_ROOM_CAPACITY) {
+        toast({
+          variant: 'destructive',
+          title: 'Room Full',
+          description: `This room has reached the ${MAX_ROOM_CAPACITY}-person limit.`,
+        });
+        return;
+      }
+    }
     onSubSessionChange(subSessionId);
     if (!openItems.includes(subSessionId)) {
       setOpenItems(prev => [...prev, subSessionId]);
@@ -135,10 +151,12 @@ export function SubSessionList({ subSessions, users, currentUser, onSubSessionCh
         onValueChange={setOpenItems}
         className="w-full overflow-y-auto"
       >
-        {subSessions.map((subSession) => {
+        {subSessions.map((subSession, index) => {
           const sessionUsers = usersBySubSession[subSession.id] || [];
           const isCurrentUserInSession = currentUser?.subSessionId === subSession.id;
-          const countLabel = `${sessionUsers.length}`;
+          const isGeneral = subSession.id === 'general';
+          const isFull = !isGeneral && sessionUsers.length >= MAX_ROOM_CAPACITY;
+          const countLabel = isGeneral ? `${sessionUsers.length}` : `${sessionUsers.length}/${MAX_ROOM_CAPACITY}`;
 
           return (
             <AccordionItem value={subSession.id} key={subSession.id} className="border-b-0">
@@ -152,12 +170,25 @@ export function SubSessionList({ subSessions, users, currentUser, onSubSessionCh
                     <span>{subSession.name}</span>
                     <span
                       className={cn(
-                        "font-normal tabular-nums",
+                        "font-normal tabular-nums text-xs",
+                        isFull ? "text-red-400" :
                         isCurrentUserInSession ? "text-accent-foreground opacity-90" : "text-muted-foreground"
                       )}
                     >
                       {countLabel}
                     </span>
+                    {!isGeneral && (
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Info className="h-3 w-3 mr-1 text-muted-foreground/60 hover:text-muted-foreground cursor-help" />
+                          </TooltipTrigger>
+                          <TooltipContent side="right" className="max-w-[180px]">
+                            <p className="text-xs">Limited to {MAX_ROOM_CAPACITY} people for optimal sound and video quality.</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    )}
                   </div>
                 </AccordionTrigger>
                 {!isCurrentUserInSession && (
@@ -165,12 +196,13 @@ export function SubSessionList({ subSessions, users, currentUser, onSubSessionCh
                     variant="secondary"
                     size="sm"
                     className="h-6 px-2"
+                    disabled={isFull}
                     onClick={(e) => {
                       e.stopPropagation();
                       handleJoinChannel(subSession.id);
                     }}
                   >
-                    Join
+                    {isFull ? 'Full' : 'Join'}
                   </Button>
                 )}
               </div>
