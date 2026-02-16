@@ -447,23 +447,37 @@ export function VoiceControls({ currentUser, onAvatarChange }: VoiceControlsProp
             </PopoverContent>
           </Popover>
 
-          {!isMobile && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant={isScreenSharing ? 'destructive' : 'secondary'}
-                  size="icon"
-                  onClick={handleToggleScreenShare}
-                  disabled={!isScreenSharing && !!presenterId}
-                >
-                  {isScreenSharing ? <ScreenShareOff className="h-5 w-5" /> : <ScreenShare className="h-5 w-5" />}
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>{isScreenSharing ? 'Stop Sharing' : presenterId ? 'Someone is already sharing' : 'Share Screen'}</p>
-              </TooltipContent>
-            </Tooltip>
-          )}
+          {!isMobile && (() => {
+            const isInGeneral = currentUser?.subSessionId === 'general' || !currentUser?.subSessionId;
+            const isDisabled = !isScreenSharing && (!!presenterId || isInGeneral);
+            const tooltipText = isScreenSharing
+              ? 'Stop Sharing'
+              : isInGeneral
+                ? 'Screen share is disabled in General for performance reasons. Join a sub-channel to share.'
+                : presenterId
+                  ? 'Someone is already sharing'
+                  : 'Share Screen';
+
+            return (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span tabIndex={0} className="inline-flex">
+                    <Button
+                      variant={isScreenSharing ? 'destructive' : 'secondary'}
+                      size="icon"
+                      onClick={handleToggleScreenShare}
+                      disabled={isDisabled}
+                    >
+                      {isScreenSharing ? <ScreenShareOff className="h-5 w-5" /> : <ScreenShare className="h-5 w-5" />}
+                    </Button>
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent className="max-w-[220px]">
+                  <p>{tooltipText}</p>
+                </TooltipContent>
+              </Tooltip>
+            );
+          })()}
           <Dialog>
             <Tooltip>
               <TooltipTrigger asChild>

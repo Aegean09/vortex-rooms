@@ -24,6 +24,8 @@ const ICE_SERVERS = {
 
 interface PeerConnectionWithUnsubscribe extends RTCPeerConnection {
   unsubscribeCandidates?: Unsubscribe;
+  unsubscribeAnswer?: Unsubscribe;
+  pendingCandidates?: RTCIceCandidate[];
 }
 
 export const createPeerConnection = (
@@ -35,6 +37,7 @@ export const createPeerConnection = (
   onDisconnect: () => void
 ): PeerConnectionWithUnsubscribe => {
   const pc: PeerConnectionWithUnsubscribe = new RTCPeerConnection(ICE_SERVERS);
+  pc.pendingCandidates = [];
 
   const callId = localPeerId < remotePeerId ? `${localPeerId}_${remotePeerId}` : `${remotePeerId}_${localPeerId}`;
   const callDocRef = doc(firestore, 'sessions', sessionId, 'calls', callId);
@@ -56,7 +59,11 @@ export const createPeerConnection = (
       if (change.type === 'added') {
         const candidate = new RTCIceCandidate(change.doc.data());
         if (pc.signalingState !== 'closed') {
-          pc.addIceCandidate(candidate).catch(e => console.error("Error adding received ICE candidate", e));
+          if (pc.remoteDescription) {
+            pc.addIceCandidate(candidate).catch(e => console.error("Error adding received ICE candidate", e));
+          } else {
+            pc.pendingCandidates!.push(candidate);
+          }
         }
       }
     });
@@ -103,6 +110,15 @@ export const createPeerConnection = (
   return pc;
 };
 
+const flushPendingCandidates = (pc: PeerConnectionWithUnsubscribe) => {
+  if (pc.pendingCandidates?.length) {
+    for (const candidate of pc.pendingCandidates) {
+      pc.addIceCandidate(candidate).catch(e => console.error("Error adding buffered ICE candidate", e));
+    }
+    pc.pendingCandidates = [];
+  }
+};
+
 export const createOffer = async (
   firestore: Firestore,
   sessionId: string,
@@ -110,20 +126,27 @@ export const createOffer = async (
   remotePeerId: string,
   pc: RTCPeerConnection
 ) => {
+  const pcExt = pc as PeerConnectionWithUnsubscribe;
   const callId = localPeerId < remotePeerId ? `${localPeerId}_${remotePeerId}` : `${remotePeerId}_${localPeerId}`;
   const callDocRef = doc(firestore, 'sessions', sessionId, 'calls', callId);
 
-  const unsubscribeAnswer = onSnapshot(callDocRef, snapshot => {
+  if (pcExt.unsubscribeAnswer) {
+    pcExt.unsubscribeAnswer();
+  }
+
+  pcExt.unsubscribeAnswer = onSnapshot(callDocRef, snapshot => {
     const data = snapshot.data();
-    if (pc.signalingState !== 'closed' && !pc.currentRemoteDescription && data?.answer) {
+    if (pc.signalingState === 'have-local-offer' && data?.answer) {
       const answerDescription = new RTCSessionDescription(data.answer);
-      pc.setRemoteDescription(answerDescription).catch(e => console.error("Failed to set remote description: ", e));
+      pc.setRemoteDescription(answerDescription)
+        .then(() => flushPendingCandidates(pcExt))
+        .catch(e => console.error("Failed to set remote description: ", e));
     }
   });
 
   pc.addEventListener('connectionstatechange', () => {
     if (pc.connectionState === 'closed' || pc.connectionState === 'failed') {
-      unsubscribeAnswer();
+      pcExt.unsubscribeAnswer?.();
     }
   });
 
@@ -131,6 +154,13 @@ export const createOffer = async (
     offerToReceiveAudio: true,
     offerToReceiveVideo: true,
   });
+
+  if (pc.signalingState !== 'stable') {
+    pcExt.unsubscribeAnswer?.();
+    pcExt.unsubscribeAnswer = undefined;
+    return;
+  }
+
   await pc.setLocalDescription(offerDescription);
 
   const offer = {
@@ -138,7 +168,7 @@ export const createOffer = async (
     type: offerDescription.type,
   };
 
-  await setDoc(callDocRef, { offer, callerId: localPeerId, calleeId: remotePeerId }, { merge: true });
+  await setDoc(callDocRef, { offer, callerId: localPeerId, calleeId: remotePeerId, answer: null }, { merge: true });
 };
 
 export const handleOffer = async (
@@ -153,6 +183,12 @@ export const handleOffer = async (
 
   try {
     await pc.setRemoteDescription(new RTCSessionDescription(offerDescription));
+    flushPendingCandidates(pc as PeerConnectionWithUnsubscribe);
+
+    if ((pc as RTCPeerConnection).signalingState !== 'have-remote-offer') {
+      return;
+    }
+
     const answerDescription = await pc.createAnswer();
     await pc.setLocalDescription(answerDescription);
 
