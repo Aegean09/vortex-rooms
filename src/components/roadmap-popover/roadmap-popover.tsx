@@ -31,12 +31,11 @@ import {
 import { useIsMobile } from '@/hooks/use-mobile';
 
 const ROADMAP_FEATURES = [
-  { icon: AudioLines, label: 'Less Keyboard Noise', status: 'in_progress' as const },
   { icon: Paintbrush, label: 'Custom Themes', status: 'planned' as const },
-  { icon: Monitor, label: 'Screen Sharing', status: 'planned' as const },
-  { icon: Camera, label: 'Camera Sharing', status: 'planned' as const },
-  { icon: ImagePlus, label: 'Photo Sharing in Chat', status: 'planned' as const },
-  { icon: Smartphone, label: 'Mobile App', status: 'planned' as const },
+  { icon: Monitor, label: 'Screen Sharing', status: 'in_progress' as const },
+  { icon: Camera, label: 'Camera Connection', status: 'planned' as const },
+  { icon: ImagePlus, label: 'Image and Video Sharing in Chat', status: 'planned' as const },
+  { icon: Smartphone, label: 'Mobile Application', status: 'planned' as const },
 ];
 
 const FEEDBACK_FORM_URL =

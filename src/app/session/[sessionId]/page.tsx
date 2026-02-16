@@ -5,6 +5,7 @@ import dynamic from 'next/dynamic';
 import { ChatArea } from '@/components/chat-area/chat-area';
 import { SubSessionList } from '@/components/subsession-list/subsession-list';
 import { ShareLink } from '@/components/share-link/share-link';
+import { Lobby } from '@/components/lobby/lobby';
 import { ScreenShareView } from '@/components/screen-share-view/screen-share-view';
 import { RoomNotFound } from '@/components/room-not-found/room-not-found';
 import { SessionLoader } from '@/components/session-loader/session-loader';
@@ -29,6 +30,7 @@ import {
   useJoinSound,
   useProcessedMessages,
   useSubSessionManager,
+  useTextChannelManager,
 } from './hooks';
 
 const VoiceControls = dynamic(
@@ -56,6 +58,8 @@ export default function SessionPage() {
     messagesData,
     subSessionsData,
     isSubSessionsLoading,
+    textChannelsData,
+    isTextChannelsLoading,
     currentUser,
     presenter,
     isSomeoneScreenSharing,
@@ -73,6 +77,20 @@ export default function SessionPage() {
     isSubSessionsLoading,
   });
 
+  const currentSubSessionId = currentUser?.subSessionId ?? 'general';
+
+  const {
+    sortedTextChannels,
+    activeTextChannelId,
+    setActiveTextChannelId,
+    activeTextChannelName,
+  } = useTextChannelManager({
+    firestore,
+    sessionId,
+    textChannelsData,
+    isTextChannelsLoading,
+  });
+
   const { messages, handleSendMessage } = useProcessedMessages({
     messagesData,
     users,
@@ -81,6 +99,7 @@ export default function SessionPage() {
     authUser,
     username,
     sessionId,
+    subSessionId: activeTextChannelId,
   });
 
   const [localAvatarSeed, setLocalAvatarSeed] = useState<string | null>(null);
@@ -148,6 +167,9 @@ export default function SessionPage() {
                 users={users || []}
                 currentUser={currentUser}
                 onSubSessionChange={handleSubSessionChange}
+                textChannels={sortedTextChannels}
+                activeTextChannelId={activeTextChannelId}
+                onTextChannelChange={setActiveTextChannelId}
               />
             </SheetContent>
           </Sheet>
@@ -161,12 +183,19 @@ export default function SessionPage() {
               users={users || []}
               currentUser={currentUser}
               onSubSessionChange={handleSubSessionChange}
+              textChannels={sortedTextChannels}
+              activeTextChannelId={activeTextChannelId}
+              onTextChannelChange={setActiveTextChannelId}
             />
           </aside>
 
           <div className="flex flex-col flex-1 gap-4 min-h-0">
             <div className={cn("flex-1 min-h-0 transition-all duration-300", { "hidden": isSomeoneScreenSharing })}>
-              <ChatArea messages={messages} onSendMessage={handleSendMessage} />
+              <ChatArea
+                messages={messages}
+                onSendMessage={handleSendMessage}
+                channelName={activeTextChannelName}
+              />
             </div>
             {isSomeoneScreenSharing && (
               <div className="flex-1 min-h-0">

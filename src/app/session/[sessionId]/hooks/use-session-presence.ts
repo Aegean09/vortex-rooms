@@ -2,6 +2,7 @@ import { useEffect, useCallback } from 'react';
 import {
   collection,
   doc,
+  getDoc,
   getDocs,
   setDoc,
   deleteDoc,
@@ -53,17 +54,25 @@ export const useSessionPresence = ({
     }
 
     const userDocRef = doc(firestore, 'sessions', sessionId, 'users', authUser.uid);
-    const userData: Record<string, unknown> = {
-      id: authUser.uid,
-      name: username,
-      sessionId,
-      subSessionId: 'general',
-      isScreenSharing: false,
-      isMuted: false,
+    
+    const initPresence = async () => {
+      const existingDoc = await getDoc(userDocRef);
+      const userData: Record<string, unknown> = {
+        id: authUser.uid,
+        name: username,
+        sessionId,
+        isScreenSharing: false,
+        isMuted: false,
+      };
+      if (!existingDoc.exists()) {
+        userData.subSessionId = 'general';
+      }
+      if (avatarStyle) userData.avatarStyle = avatarStyle;
+      if (avatarSeed) userData.avatarSeed = avatarSeed;
+      await setDoc(userDocRef, userData, { merge: true });
     };
-    if (avatarStyle) userData.avatarStyle = avatarStyle;
-    if (avatarSeed) userData.avatarSeed = avatarSeed;
-    setDoc(userDocRef, userData, { merge: true });
+    
+    initPresence();
 
     window.addEventListener('beforeunload', handleLeave);
 

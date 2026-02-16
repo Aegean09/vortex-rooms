@@ -4,16 +4,17 @@ import React, { useEffect, useRef } from 'react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Send } from 'lucide-react';
+import { Send, Hash } from 'lucide-react';
 import { type Message } from '@/interfaces/session';
 import { DiceBearAvatar } from '@/components/dicebear-avatar/dicebear-avatar';
 
 interface ChatAreaProps {
   messages: Message[];
   onSendMessage: (text: string) => void;
+  channelName: string;
 }
 
-export function ChatArea({ messages, onSendMessage }: ChatAreaProps) {
+export function ChatArea({ messages, onSendMessage, channelName }: ChatAreaProps) {
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const [newMessage, setNewMessage] = React.useState('');
 
@@ -36,6 +37,10 @@ export function ChatArea({ messages, onSendMessage }: ChatAreaProps) {
 
   return (
     <div className="flex flex-col h-full bg-card/50 rounded-lg border border-border overflow-hidden">
+      <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border bg-muted/30">
+        <Hash className="h-4 w-4 text-primary" />
+        <span className="text-sm font-medium">{channelName}</span>
+      </div>
       <ScrollArea className="flex-grow p-4" ref={scrollAreaRef}>
         <div className="space-y-4">
           {messages.map((message) => (
@@ -60,7 +65,7 @@ export function ChatArea({ messages, onSendMessage }: ChatAreaProps) {
           <Input
             value={newMessage}
             onChange={(e) => setNewMessage(e.target.value)}
-            placeholder="Type a message..."
+            placeholder={`Message #${channelName}...`}
             autoComplete="off"
           />
           <Button type="submit" size="icon" disabled={!newMessage.trim()}>

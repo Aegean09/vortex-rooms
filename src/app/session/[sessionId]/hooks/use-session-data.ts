@@ -39,10 +39,16 @@ export const useSessionData = (sessionId: string, authUser: FirebaseUser | null 
     [firestore, sessionId]
   );
 
+  const textChannelsRef = useMemoFirebase(
+    () => (firestore ? collection(firestore, 'sessions', sessionId, 'textchannels') : null),
+    [firestore, sessionId]
+  );
+
   const { data: sessionData, isLoading: isSessionLoading } = useDoc<any>(sessionRef);
   const { data: users, isLoading: usersLoading } = useCollection<User>(usersRef);
   const { data: messagesData, isLoading: messagesLoading } = useCollection<any>(messagesRef);
   const { data: subSessionsData, isLoading: isSubSessionsLoading } = useCollection<SubSession>(subSessionsRef);
+  const { data: textChannelsData, isLoading: isTextChannelsLoading } = useCollection<SubSession>(textChannelsRef);
 
   const currentUser = useMemo(() => {
     if (!authUser || !users) return null;
@@ -58,6 +64,7 @@ export const useSessionData = (sessionId: string, authUser: FirebaseUser | null 
     usersRef,
     messagesRef,
     subSessionsRef,
+    textChannelsRef,
     sessionData,
     isSessionLoading,
     users,
@@ -66,6 +73,8 @@ export const useSessionData = (sessionId: string, authUser: FirebaseUser | null 
     messagesLoading,
     subSessionsData,
     isSubSessionsLoading,
+    textChannelsData,
+    isTextChannelsLoading,
     currentUser,
     presenter,
     isSomeoneScreenSharing,
