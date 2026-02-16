@@ -95,7 +95,7 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
   const [screenShareStream, setScreenShareStream] = useState<MediaStream | null>(null);
   const screenShareTrackRef = useRef<MediaStreamTrack | null>(null);
   const [presenterId, setPresenterId] = useState<string | null>(null);
-  const [noiseGateThreshold, setNoiseGateThreshold] = useState<number>(() => percentToRms(65));
+  const [noiseGateThreshold, setNoiseGateThreshold] = useState<number>(() => percentToRms(70));
   const [pushToTalk, setPushToTalk] = useState<boolean>(false);
   const [pushToTalkKey, setPushToTalkKey] = useState<string>('Space');
   const [isPressingPushToTalkKey, setIsPressingPushToTalkKey] = useState<boolean>(false);
