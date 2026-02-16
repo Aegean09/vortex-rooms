@@ -139,10 +139,38 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
 
   useEffect(() => {
     if (users) {
-      const presenter = users.find(u => u.isScreenSharing);
+      const presenter = users.find(u => u.isScreenSharing && u.subSessionId === subSessionId);
       setPresenterId(presenter ? presenter.id : null);
+      // Clear remote screen share stream if no presenter in our sub-session
+      if (!presenter && !isScreenSharing) {
+        setScreenShareStream(null);
+      }
     }
-  }, [users]);
+  }, [users, subSessionId, isScreenSharing]);
+
+  // When sub-session changes: stop sharing if we were, and clear remote screen share
+  const prevSubSessionIdRef = useRef(subSessionId);
+  useEffect(() => {
+    if (prevSubSessionIdRef.current !== subSessionId) {
+      prevSubSessionIdRef.current = subSessionId;
+
+      // If we were sharing, stop it
+      if (screenShareTrackRef.current) {
+        screenShareTrackRef.current.stop();
+        screenShareTrackRef.current = null;
+        setIsScreenSharing(false);
+        setScreenShareStream(null);
+        if (firestore && user) {
+          const userDocRef = doc(firestore, 'sessions', sessionId, 'users', user.uid);
+          updateDoc(userDocRef, { isScreenSharing: false }).catch(console.error);
+        }
+      }
+
+      // Clear any remote screen share from previous sub-session
+      setScreenShareStream(null);
+      setPresenterId(null);
+    }
+  }, [subSessionId, firestore, user, sessionId]);
 
   const cleanupConnection = useCallback(async (peerId: string) => {
     const pc = peerConnections.current[peerId];
@@ -160,6 +188,15 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
         delete newStreams[peerId];
       }
       return newStreams;
+    });
+
+    // Clear screen share stream if this peer was the presenter
+    setPresenterId(prev => {
+      if (prev === peerId) {
+        setScreenShareStream(null);
+        return null;
+      }
+      return prev;
     });
 
     if (firestore && sessionId) {
@@ -625,6 +662,11 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
           () => cleanupConnection(remotePeerId)
         );
         localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+        // If we're currently screen sharing, add the screen share track to the new peer
+        if (screenShareTrackRef.current && isScreenSharing) {
+          const screenStream = new MediaStream([screenShareTrackRef.current]);
+          pc.addTrack(screenShareTrackRef.current, screenStream);
+        }
         peerConnections.current[remotePeerId] = pc;
         createOffer(firestore, sessionId, localPeerId, remotePeerId, pc);
       }
@@ -670,6 +712,11 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
                   () => cleanupConnection(remotePeerId)
                 );
                 localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+                // If we're currently screen sharing, add the screen share track to the new peer
+                if (screenShareTrackRef.current && isScreenSharing) {
+                  const screenStream = new MediaStream([screenShareTrackRef.current]);
+                  pc.addTrack(screenShareTrackRef.current, screenStream);
+                }
                 peerConnections.current[remotePeerId] = pc;
                 await handleOffer(firestore, change.doc.ref, pc, offerDescription);
               } else {
@@ -687,7 +734,7 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
     return () => {
       callsSnapshotUnsubscribe();
     };
-  }, [firestore, localStream, sessionId, localPeerId, user, users, subSessionId, cleanupConnection]);
+  }, [firestore, localStream, sessionId, localPeerId, user, users, subSessionId, cleanupConnection, isScreenSharing]);
 
   return (
     <WebRTCContext.Provider value={{

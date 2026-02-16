@@ -55,7 +55,10 @@ export const useSessionData = (sessionId: string, authUser: FirebaseUser | null 
     return users.find(u => u.id === authUser.uid) || null;
   }, [authUser, users]);
 
-  const presenter = useMemo(() => users?.find(u => u.isScreenSharing) || null, [users]);
+  const presenter = useMemo(() => {
+    if (!currentUser || !users) return null;
+    return users.find(u => u.isScreenSharing && u.subSessionId === currentUser.subSessionId) || null;
+  }, [users, currentUser]);
   const isSomeoneScreenSharing = !!presenter;
 
   return {
