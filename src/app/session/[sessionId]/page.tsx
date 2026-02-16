@@ -114,10 +114,11 @@ export default function SessionPage() {
         name: username,
         avatarStyle: avatarStyle ?? undefined,
         avatarSeed: effectiveAvatarSeed ?? undefined,
+        subSessionId: currentUser?.subSessionId,
       };
     }
     return null;
-  }, [authUser, username, avatarStyle, effectiveAvatarSeed]);
+  }, [authUser, username, avatarStyle, effectiveAvatarSeed, currentUser?.subSessionId]);
 
   useEffect(() => {
     if (isSomeoneScreenSharing) {
