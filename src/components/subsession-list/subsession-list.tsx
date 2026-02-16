@@ -2,7 +2,7 @@
 
 import React, { useMemo, useState, useEffect } from 'react';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
-import { Volume2, Users, Plus, MicOff, HeadphoneOff, Hash, Info } from 'lucide-react';
+import { Volume2, Users, Plus, MicOff, HeadphoneOff, Hash, Info, ScreenShare } from 'lucide-react';
 import { DiceBearAvatar } from '@/components/dicebear-avatar/dicebear-avatar';
 import { type User, type SubSession } from '@/interfaces/session';
 import { Button } from '@/components/ui/button';
@@ -241,8 +241,11 @@ export function SubSessionList({ subSessions, users, currentUser, onSubSessionCh
                             "bg-green-500"
                           )} />
                         </div>
-                        <span className="font-medium text-sm truncate flex-1">
+                        <span className="font-medium text-sm truncate flex-1 flex items-center gap-1.5">
                           {user.name} {isCurrentUser ? '(You)' : ''}
+                          {user.isScreenSharing && (
+                            <ScreenShare className="h-3 w-3 text-primary flex-shrink-0" />
+                          )}
                         </span>
                         {isSpeaking && !userIsMuted && !userIsDeafened && (
                           <div className="flex items-center gap-1">

@@ -167,8 +167,8 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
       }
 
       // Clear any remote screen share from previous sub-session
+      // Note: don't clear presenterId here — the users effect above handles it correctly
       setScreenShareStream(null);
-      setPresenterId(null);
     }
   }, [subSessionId, firestore, user, sessionId]);
 
