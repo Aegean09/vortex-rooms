@@ -41,6 +41,10 @@ ui-debug.log
 *.tsbuildinfo
 next-env.d.ts
 
+# tauri
+src-tauri/target/
+src-tauri/gen/
+
 # scripts
 scripts/*.json
 !scripts/package.json
