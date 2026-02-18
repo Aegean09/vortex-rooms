@@ -76,18 +76,14 @@ service cloud.firestore {
 
     /**
      * @description Controls access to session documents. Sessions are public to read, allowing link-based joining.
-     *   Creation is allowed for any signed-in user. Updates are allowed for activity tracking.
-     *   Deletion is allowed if the user is the last one in the session.
-     * @path /sessions/{sessionId}
-     * @allow (get) Any user, signed-in or not, can read a session's metadata.
-     * @allow (update) Any signed-in user can update a session, intended for `lastActive` timestamp.
-     * @principle Public Read with Controlled Writes.
+     *   Creation is allowed for any signed-in user. Only participants can update (e.g. lastActive) or delete.
+     *   Client should only call delete when the last user leaves the session.
      */
     match /sessions/{sessionId} {
       allow get, list: if true;
       allow create: if isSignedIn();
-      allow update: if isSignedIn();
-      allow delete: if isSignedIn();
+      allow update: if isParticipant(sessionId);
+      allow delete: if isParticipant(sessionId);
     }
 
     /**
@@ -100,7 +96,7 @@ service cloud.firestore {
      * @principle Enforces self-management of session membership and restricts visibility to participants.
      */
     match /sessions/{sessionId}/users/{userId} {
-      allow get, list: if true;
+      allow get, list: if isParticipant(sessionId);
       allow create: if isOwner(userId)
                     && request.resource.data.sessionId == sessionId
                     && request.resource.data.id == userId;
@@ -120,8 +116,8 @@ service cloud.firestore {
      * @principle Combines shared access for reads/creates with strict ownership for updates/deletes.
      */
     match /sessions/{sessionId}/messages/{messageId} {
-      allow get, list: if true;
-      allow create: if isSignedIn()
+      allow get, list: if isParticipant(sessionId);
+      allow create: if isParticipant(sessionId)
                     && request.resource.data.sessionId == sessionId
                     && request.resource.data.userId == request.auth.uid;
       allow update: if isMessageOwner(resource.data) && isExistingDoc()
@@ -139,8 +135,8 @@ service cloud.firestore {
      * @allow (create) Any authenticated user can create a new channel.
      */
     match /sessions/{sessionId}/subsessions/{subSessionId} {
-      allow get, list: if isSignedIn();
-      allow create: if isSignedIn();
+      allow get, list: if isParticipant(sessionId);
+      allow create: if isParticipant(sessionId);
       // Allow any participant to delete a subsession.
       // This is necessary for the "last user leaves" cleanup logic.
       allow delete: if isParticipant(sessionId);
@@ -153,8 +149,8 @@ service cloud.firestore {
      * @allow (create) Any authenticated user can create a new text channel.
      */
     match /sessions/{sessionId}/textchannels/{textChannelId} {
-      allow get, list: if isSignedIn();
-      allow create: if isSignedIn();
+      allow get, list: if isParticipant(sessionId);
+      allow create: if isParticipant(sessionId);
       allow delete: if isParticipant(sessionId);
     }
 
@@ -166,10 +162,9 @@ service cloud.firestore {
      * @principle Allows authenticated users to perform the necessary signaling for WebRTC.
      */
     match /sessions/{sessionId}/calls/{callId} {
-        allow read, write: if isSignedIn();
-        
+        allow read, write: if isParticipant(sessionId);
         match /{path=**} {
-          allow read, write: if isSignedIn();
+          allow read, write: if isParticipant(sessionId);
         }
     }
   }
