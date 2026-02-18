@@ -220,24 +220,28 @@ export default function SetupPage() {
       }
     }
 
-    const creatingWithPassword = !sessionData && password.trim().length > 0;
+    const isCreating = !sessionData;
 
-    if (creatingWithPassword) {
-      await setDoc(sessionDocRef, newSessionData, { merge: true });
-      try {
-        await callSetRoomPassword(sessionId, password.trim());
-      } catch (err) {
-        toast({
-          variant: 'destructive',
-          title: 'Error',
-          description: 'Could not set room password. Please try again.',
-        });
-        setIsJoining(false);
-        return;
+    if (isCreating) {
+      if (password.trim().length > 0) {
+        await setDoc(sessionDocRef, newSessionData, { merge: true });
+        try {
+          await callSetRoomPassword(sessionId, password.trim());
+        } catch (err) {
+          toast({
+            variant: 'destructive',
+            title: 'Error',
+            description: 'Could not set room password. Please try again.',
+          });
+          setIsJoining(false);
+          return;
+        }
+      } else {
+        setDocumentNonBlocking(sessionDocRef, newSessionData, { merge: true });
       }
-    } else {
-      setDocumentNonBlocking(sessionDocRef, newSessionData, { merge: true });
     }
+    // When joining existing room we do not write to session doc (only participants can update).
+    // Session page's useSessionPresence will add user to users and update participantCount.
 
     sessionStorage.setItem(`vortex-setup-complete-${sessionId}`, 'true');
 

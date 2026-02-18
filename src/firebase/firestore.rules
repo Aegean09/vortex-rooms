@@ -68,7 +68,8 @@ service cloud.firestore {
       return s.get('maxUsers', 999) == null || s.get('participantCount', 0) < s.get('maxUsers', 999);
     }
     match /sessions/{sessionId}/users/{userId} {
-      allow get, list: if isParticipant(sessionId);
+      allow get: if isParticipant(sessionId) || (isSignedIn() && userId == request.auth.uid);
+      allow list: if isParticipant(sessionId);
       allow create: if isOwner(userId)
                     && request.resource.data.sessionId == sessionId
                     && request.resource.data.id == userId
