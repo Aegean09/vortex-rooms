@@ -21,20 +21,24 @@ import {
   AudioLines,
   Smartphone,
   Camera,
-  Monitor,
   Paintbrush,
   CircleDot,
   LoaderCircle,
   ImagePlus,
   ExternalLink,
+  Lock,
+  Radio,
+  Globe,
 } from 'lucide-react';
 import { useIsMobile } from '@/hooks/use-mobile';
 
 const ROADMAP_FEATURES = [
+  { icon: Lock, label: 'E2E Message Encryption', status: 'planned' as const },
+  { icon: Radio, label: 'SFU (Scalable Voice/Video)', status: 'planned' as const },
+  { icon: Globe, label: 'TURN Server (NAT Traversal)', status: 'planned' as const },
   { icon: Paintbrush, label: 'Custom Themes', status: 'planned' as const },
-  { icon: Monitor, label: 'Screen Sharing', status: 'in_progress' as const },
-  { icon: Camera, label: 'Camera Connection', status: 'planned' as const },
-  { icon: ImagePlus, label: 'Image and Video Sharing in Chat', status: 'planned' as const },
+  { icon: Camera, label: 'Camera / Video Chat', status: 'planned' as const },
+  { icon: ImagePlus, label: 'Image and Video in Chat', status: 'planned' as const },
   { icon: Smartphone, label: 'Mobile Application', status: 'planned' as const },
 ];
 
@@ -121,6 +125,7 @@ function DesktopRoadmap() {
       <Tooltip>
         <TooltipTrigger asChild>
           <div className="w-full max-w-md mt-6 cursor-pointer">
+            <p className="text-xs text-muted-foreground mb-1.5">What&apos;s next?</p>
             <div className="rounded-xl border border-primary/20 bg-card/80 backdrop-blur-sm overflow-hidden pt-[9px]">
               <div
                 ref={scrollRef}
@@ -168,6 +173,7 @@ function MobileRoadmap() {
             <Map className="h-4 w-4 text-primary" />
             Roadmap
           </DialogTitle>
+          <p className="text-xs text-muted-foreground font-normal">What&apos;s next?</p>
         </DialogHeader>
         <div className="space-y-2">
           {ROADMAP_FEATURES.map((feature) => (
