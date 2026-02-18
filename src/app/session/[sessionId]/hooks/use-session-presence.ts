@@ -57,18 +57,18 @@ export const useSessionPresence = ({
     
     const initPresence = async () => {
       const existingDoc = await getDoc(userDocRef);
-      const userData: Record<string, unknown> = {
-        id: authUser.uid,
-        name: username,
-        sessionId,
-        isScreenSharing: false,
-        isMuted: false,
-      };
+    const userData: Record<string, unknown> = {
+      id: authUser.uid,
+      name: username,
+      sessionId,
+      isScreenSharing: false,
+      isMuted: false,
+    };
       if (!existingDoc.exists()) {
         userData.subSessionId = 'general';
       }
-      if (avatarStyle) userData.avatarStyle = avatarStyle;
-      if (avatarSeed) userData.avatarSeed = avatarSeed;
+    if (avatarStyle) userData.avatarStyle = avatarStyle;
+    if (avatarSeed) userData.avatarSeed = avatarSeed;
       await setDoc(userDocRef, userData, { merge: true });
     };
     

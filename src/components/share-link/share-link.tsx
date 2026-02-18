@@ -67,9 +67,9 @@ export function ShareLink() {
         <div className="relative flex-grow w-full">
           <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-medium text-muted-foreground select-none">ID:</span>
           <Input value={sessionId} readOnly className="pr-10 pl-10 bg-background text-center tracking-widest" />
-          <Button variant="ghost" size="icon" onClick={() => copyToClipboard(sessionId, 'id')} className="absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8" aria-label="Copy Session ID">
-            <Copy className="h-4 w-4 text-primary" />
-          </Button>
+            <Button variant="ghost" size="icon" onClick={() => copyToClipboard(sessionId, 'id')} className="absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8" aria-label="Copy Session ID">
+              <Copy className="h-4 w-4 text-primary" />
+            </Button>
         </div>
       </div>
     </div>
