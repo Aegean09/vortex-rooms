@@ -42,20 +42,27 @@ export async function saveParticipantKey(
 export function subscribeParticipantKeys(
   firestore: Firestore,
   sessionId: string,
-  onKeys: (keys: Record<string, ParticipantKeyData[]>) => void
+  onKeys: (keys: Record<string, ParticipantKeyData[]>) => void,
+  onError?: (err: Error) => void
 ): () => void {
   const coll = collection(firestore, 'sessions', sessionId, 'e2e');
-  return onSnapshot(coll, (snap) => {
-    const out: Record<string, ParticipantKeyData[]> = {};
-    snap.docs.forEach((d) => {
-      const data = d.data() as E2EGroupSessionKeyDoc & { key?: string; createdAt?: number };
-      let entries: ParticipantKeyData[] = [];
-      if (Array.isArray(data?.keys))
-        entries = data.keys.filter((e): e is ParticipantKeyData => e?.key != null && e?.createdAt != null);
-      else if (data?.key != null)
-        entries = [{ key: data.key, createdAt: data.createdAt ?? 0 }];
-      if (entries.length) out[d.id] = entries;
-    });
-    onKeys(out);
-  });
+  return onSnapshot(
+    coll,
+    (snap) => {
+      const out: Record<string, ParticipantKeyData[]> = {};
+      snap.docs.forEach((d) => {
+        const data = d.data() as E2EGroupSessionKeyDoc & { key?: string; createdAt?: number };
+        let entries: ParticipantKeyData[] = [];
+        if (Array.isArray(data?.keys))
+          entries = data.keys.filter((e): e is ParticipantKeyData => e?.key != null && e?.createdAt != null);
+        else if (data?.key != null)
+          entries = [{ key: data.key, createdAt: data.createdAt ?? 0 }];
+        if (entries.length) out[d.id] = entries;
+      });
+      onKeys(out);
+    },
+    (err) => {
+      onError?.(err instanceof Error ? err : new Error(String(err)));
+    }
+  );
 }

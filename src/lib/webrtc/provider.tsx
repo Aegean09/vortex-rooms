@@ -162,7 +162,7 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
         setScreenShareStream(null);
         if (firestore && user) {
           const userDocRef = doc(firestore, 'sessions', sessionId, 'users', user.uid);
-          updateDoc(userDocRef, { isScreenSharing: false }).catch(console.error);
+          updateDoc(userDocRef, { isScreenSharing: false }).catch(() => {});
         }
       }
 
@@ -214,10 +214,8 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
 
         batch.delete(callDocRef);
         await batch.commit();
-      } catch (error) {
-        if (error instanceof Error && !error.message.includes('NOT_FOUND')) {
-          console.error(`Error cleaning up call document:`, error);
-        }
+      } catch {
+        // ignore (e.g. NOT_FOUND)
       }
     }
   }, [firestore, sessionId, localPeerId]);
@@ -252,8 +250,8 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
       const userDocRef = doc(firestore, 'sessions', sessionId, 'users', user.uid);
       try {
         await updateDoc(userDocRef, { isMuted: newMutedState });
-      } catch (error) {
-        console.error('Error updating mute state in Firestore:', error);
+      } catch {
+        // ignore
       }
 
       if (!newMutedState && isDeafened) {
@@ -317,7 +315,6 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
           }
         }
       } catch (err) {
-        console.error("Screen share permission denied or error:", err);
         await updateDoc(userDocRef, { isScreenSharing: false });
         setIsScreenSharing(false);
         setScreenShareStream(null);
@@ -334,8 +331,8 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
       if (!selectedDeviceId && audioInputs.length > 0) {
         setSelectedDeviceId(audioInputs[0].deviceId);
       }
-    } catch (error) {
-      console.error('Error enumerating audio devices:', error);
+    } catch {
+      // ignore
     }
   }, [selectedDeviceId]);
 
@@ -354,8 +351,7 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
         video: false,
       });
       return stream;
-    } catch (error) {
-      console.error('Error accessing media devices:', error);
+    } catch {
       return null;
     }
   }, []);
@@ -421,7 +417,7 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
 
     const processNoiseGate = () => {
       if (nodes.audioContext && nodes.audioContext.state === 'suspended') {
-        nodes.audioContext.resume().catch(console.error);
+        nodes.audioContext.resume().catch(() => {});
       }
 
       if (!nodes.analyser || !nodes.gainNode || nodes.audioContext?.state !== 'running') {
@@ -481,13 +477,12 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
       audioNodesRef.current = nodes;
 
       if (nodes.audioContext.state === 'suspended') {
-        nodes.audioContext.resume().catch(console.error);
+        nodes.audioContext.resume().catch(() => {});
       }
 
       setLocalStream(nodes.destination.stream);
       startNoiseGateLoop(nodes);
-    }).catch((error) => {
-      console.error('Failed to create audio nodes with noise suppression:', error);
+    }).catch(() => {
       if (!isMounted) return;
 
       const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
@@ -550,7 +545,7 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
       noiseSuppressionEnabled
     ).then((updatedNodes) => {
       audioNodesRef.current = updatedNodes;
-    }).catch(console.error);
+    }).catch(() => {});
   }, [noiseSuppressionEnabled]);
 
   useEffect(() => {
@@ -583,8 +578,8 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
               if (sender.track?.id !== newTrack.id) {
                 try {
                   await sender.replaceTrack(newTrack);
-                } catch (e) {
-                  console.error(`Error replacing track for ${peerId}:`, e);
+                } catch {
+                  // ignore
                 }
               }
             }
@@ -594,8 +589,8 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
             });
             try {
               await createOffer(firestore, sessionId, localPeerId, peerId, pc);
-            } catch (e) {
-              console.error(`Error creating offer for ${peerId}:`, e);
+            } catch {
+              // ignore
             }
           }
         }

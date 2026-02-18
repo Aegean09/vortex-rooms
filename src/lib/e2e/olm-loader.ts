@@ -38,22 +38,14 @@ function loadScript(src: string): Promise<void> {
     }
     const existing = document.querySelector(`script[src="${src}"]`);
     if (existing) {
-      console.log('[E2E] Olm script already in DOM');
       resolve();
       return;
     }
-    console.log('[E2E] Loading script', src);
     const script = document.createElement('script');
     script.src = src;
     script.async = true;
-    script.onload = () => {
-      console.log('[E2E] Script loaded', src);
-      resolve();
-    };
-    script.onerror = () => {
-      console.error('[E2E] Script failed to load', src);
-      reject(new Error(`Failed to load ${src}`));
-    };
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error(`Failed to load ${src}`));
     document.head.appendChild(script);
   });
 }
@@ -71,15 +63,9 @@ export function getOlm(): Promise<OlmNamespace> {
 }
 
 async function loadAndInitOlm(): Promise<NonNullable<typeof window.Olm>> {
-  console.log('[E2E] getOlm() called, loading...');
   await loadScript(OLM_SCRIPT_URL);
   const Olm = window.Olm;
-  if (!Olm) {
-    console.error('[E2E] window.Olm is undefined after script load');
-    throw new Error('Olm not found on window after script load');
-  }
-  console.log('[E2E] Olm.init() starting (WASM)...');
+  if (!Olm) throw new Error('Olm not found on window after script load');
   await Olm.init({ locateFile: () => OLM_WASM_URL });
-  console.log('[E2E] Olm.init() done, ready');
   return Olm;
 }

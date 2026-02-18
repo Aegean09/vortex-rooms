@@ -75,7 +75,7 @@ export default function SetupPage() {
     analyserRef.current?.disconnect();
     localStreamRef.current?.getTracks().forEach(track => track.stop());
     if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
-      audioContextRef.current.close().catch(console.error);
+      audioContextRef.current.close().catch(() => {});
     }
     sourceRef.current = null;
     analyserRef.current = null;
@@ -116,8 +116,7 @@ export default function SetupPage() {
       localStreamRef.current = stream;
       setMicPermission('granted');
       startAudioProcessing(stream);
-    } catch (err) {
-      console.error('Error accessing microphone:', err);
+    } catch {
       setMicPermission('denied');
     }
   }, [cleanupAudio, startAudioProcessing]);

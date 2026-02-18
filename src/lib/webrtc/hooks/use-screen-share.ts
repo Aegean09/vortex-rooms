@@ -66,7 +66,6 @@ export const useScreenShare = (
           }
         }
       } catch (err) {
-        console.error('Screen share permission denied or error:', err);
         await updateDoc(userDocRef, { isScreenSharing: false });
         setIsScreenSharing(false);
         setScreenShareStream(null);

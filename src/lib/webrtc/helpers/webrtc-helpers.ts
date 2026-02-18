@@ -21,11 +21,8 @@ export const cleanupFirestoreCall = async (
     
     batch.delete(callDocRef);
     await batch.commit();
-    console.log(`Cleaned up Firestore call document for ${callId}`);
-  } catch (error) {
-    if (error instanceof Error && !error.message.includes('NOT_FOUND')) {
-      console.error(`Error cleaning up call document ${callId}:`, error);
-    }
+  } catch {
+    // ignore (e.g. NOT_FOUND)
   }
 };
 
@@ -40,7 +37,6 @@ export const cleanupPeerConnection = (
     }
     pc.close();
     delete peerConnections.current[peerId];
-    console.log(`Cleaned up connection for peer ${peerId}`);
   }
 };
 
