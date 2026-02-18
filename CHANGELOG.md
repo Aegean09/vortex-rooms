@@ -4,6 +4,24 @@ All notable changes to this project are documented in this file. Versions follow
 
 ---
 
+## [0.4.0] — Session & web security (Phase 3)
+
+### Security
+
+- **Session ID length**: `nanoid(5)` → `nanoid(12)` to make brute-force / guessing impractical.
+- **Join form**: Room code input and copy updated to 12 characters (maxLength, placeholder, description text).
+- **Security headers** (in `next.config.ts`):
+  - `X-Frame-Options: DENY`
+  - `X-Content-Type-Options: nosniff`
+  - `Referrer-Policy: strict-origin-when-cross-origin`
+  - `Content-Security-Policy`: default-src, script-src, style-src, img-src, font-src, connect-src (self + Firebase/Google), frame-ancestors, base-uri, form-action.
+
+### Changed
+
+- New rooms now use a 12-character session ID. Existing 5-character room links will no longer be created; old links continue to work if the session still exists.
+
+---
+
 ## [0.3.0] — Message security & validation (Phase 2)
 
 ### Added
@@ -54,6 +72,7 @@ Pre–public release; baseline for early / close-circle use.
 
 ---
 
+[0.4.0]: https://github.com/egedurmaz/vortex-rooms/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/egedurmaz/vortex-rooms/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/egedurmaz/vortex-rooms/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/egedurmaz/vortex-rooms/releases/tag/v0.1.0

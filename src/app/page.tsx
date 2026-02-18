@@ -23,7 +23,7 @@ export default function HomePage() {
 
   const createRoom = () => {
     if (!authUser) return;
-    const newSessionId = nanoid(5);
+    const newSessionId = nanoid(12);
     router.push(`/session/${newSessionId}/setup`);
   };
 
