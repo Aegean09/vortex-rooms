@@ -10,8 +10,18 @@ import {
 import { type User, type SubSession } from '@/interfaces/session';
 import { User as FirebaseUser } from 'firebase/auth';
 
-export const useSessionData = (sessionId: string, authUser: FirebaseUser | null | undefined) => {
+export interface UseSessionDataOptions {
+  /** When true, do not subscribe to users/messages/subsessions/textchannels (avoids permission errors before presence has joined). */
+  skipParticipantCollections?: boolean;
+}
+
+export const useSessionData = (
+  sessionId: string,
+  authUser: FirebaseUser | null | undefined,
+  options: UseSessionDataOptions = {}
+) => {
   const firestore = useFirestore();
+  const skip = options.skipParticipantCollections ?? false;
 
   const sessionRef = useMemoFirebase(
     () => (firestore ? doc(firestore, 'sessions', sessionId) : null),
@@ -20,28 +30,24 @@ export const useSessionData = (sessionId: string, authUser: FirebaseUser | null 
 
   const usersRef = useMemoFirebase(
     () =>
-      firestore
-        ? collection(firestore, 'sessions', sessionId, 'users')
-        : null,
-    [firestore, sessionId]
+      skip ? null : (firestore ? collection(firestore, 'sessions', sessionId, 'users') : null),
+    [firestore, sessionId, skip]
   );
 
   const messagesRef = useMemoFirebase(
     () =>
-      firestore
-        ? collection(firestore, 'sessions', sessionId, 'messages')
-        : null,
-    [firestore, sessionId]
+      skip ? null : (firestore ? collection(firestore, 'sessions', sessionId, 'messages') : null),
+    [firestore, sessionId, skip]
   );
 
   const subSessionsRef = useMemoFirebase(
-    () => (firestore ? collection(firestore, 'sessions', sessionId, 'subsessions') : null),
-    [firestore, sessionId]
+    () => (skip ? null : (firestore ? collection(firestore, 'sessions', sessionId, 'subsessions') : null)),
+    [firestore, sessionId, skip]
   );
 
   const textChannelsRef = useMemoFirebase(
-    () => (firestore ? collection(firestore, 'sessions', sessionId, 'textchannels') : null),
-    [firestore, sessionId]
+    () => (skip ? null : (firestore ? collection(firestore, 'sessions', sessionId, 'textchannels') : null)),
+    [firestore, sessionId, skip]
   );
 
   const { data: sessionData, isLoading: isSessionLoading } = useDoc<any>(sessionRef);

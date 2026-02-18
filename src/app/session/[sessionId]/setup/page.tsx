@@ -3,7 +3,8 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useAuth, useUser, useFirestore, setDocumentNonBlocking, useMemoFirebase, useDoc } from '@/firebase';
-import { doc, serverTimestamp } from 'firebase/firestore';
+import { doc, serverTimestamp, setDoc } from 'firebase/firestore';
+import { callSetRoomPassword, callVerifyRoomPassword } from '@/firebase/room-password-callables';
 import { initiateAnonymousSignIn } from '@/firebase/non-blocking-login';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -49,7 +50,8 @@ export default function SetupPage() {
   const { data: sessionData } = useDoc<any>(sessionRef);
 
   useEffect(() => {
-    if (sessionData?.password && !requiresPassword) {
+    const needsPassword = sessionData?.requiresPassword || sessionData?.password;
+    if (needsPassword && !requiresPassword) {
       const isCreator = sessionData.createdBy === authUser?.uid;
       if (!isCreator) {
         setRequiresPassword(true);
@@ -128,7 +130,8 @@ export default function SetupPage() {
   const handleJoin = async () => {
     if (!nameInput.trim() || !firestore || !authUser || !sessionId || isJoining) return;
 
-    if (sessionData?.password) {
+    const needsPassword = sessionData?.requiresPassword || sessionData?.password;
+    if (needsPassword) {
       const isCreator = sessionData.createdBy === authUser.uid;
       if (!isCreator) {
         if (!roomPassword.trim()) {
@@ -141,7 +144,27 @@ export default function SetupPage() {
           return;
         }
 
-        if (roomPassword.trim() !== sessionData.password) {
+        if (sessionData.requiresPassword) {
+          try {
+            const result = await callVerifyRoomPassword(sessionId, roomPassword.trim());
+            if (!result.ok) {
+              toast({
+                variant: 'destructive',
+                title: 'Incorrect Password',
+                description: 'The password you entered is incorrect.',
+              });
+              setRoomPassword('');
+              return;
+            }
+          } catch (err) {
+            toast({
+              variant: 'destructive',
+              title: 'Error',
+              description: 'Could not verify password. Please try again.',
+            });
+            return;
+          }
+        } else if (sessionData.password !== undefined && roomPassword.trim() !== sessionData.password) {
           toast({
             variant: 'destructive',
             title: 'Incorrect Password',
@@ -188,7 +211,7 @@ export default function SetupPage() {
 
       if (roomType === 'custom') {
         if (password.trim()) {
-          newSessionData.password = password.trim();
+          newSessionData.requiresPassword = true;
         }
         if (maxUsers.trim() && !isNaN(Number(maxUsers)) && Number(maxUsers) > 0) {
           newSessionData.maxUsers = Number(maxUsers);
@@ -197,7 +220,25 @@ export default function SetupPage() {
       }
     }
 
-    setDocumentNonBlocking(sessionDocRef, newSessionData, { merge: true });
+    const creatingWithPassword = !sessionData && password.trim().length > 0;
+
+    if (creatingWithPassword) {
+      await setDoc(sessionDocRef, newSessionData, { merge: true });
+      try {
+        await callSetRoomPassword(sessionId, password.trim());
+      } catch (err) {
+        toast({
+          variant: 'destructive',
+          title: 'Error',
+          description: 'Could not set room password. Please try again.',
+        });
+        setIsJoining(false);
+        return;
+      }
+    } else {
+      setDocumentNonBlocking(sessionDocRef, newSessionData, { merge: true });
+    }
+
     sessionStorage.setItem(`vortex-setup-complete-${sessionId}`, 'true');
 
     setTimeout(() => {
@@ -236,7 +277,7 @@ export default function SetupPage() {
         </CardHeader>
 
         <CardContent className="space-y-6">
-          {requiresPassword && sessionData?.password && (
+          {requiresPassword && (sessionData?.requiresPassword || sessionData?.password) && (
             <div className="space-y-2">
               <Label htmlFor="room-password" className="text-sm font-medium">
                 Password

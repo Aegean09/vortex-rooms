@@ -41,7 +41,7 @@ export function ShareLink() {
       <div className="flex items-center justify-between">
         {sessionData && (
           <div className="flex items-center gap-2">
-            {sessionData.password && (
+            {(sessionData.requiresPassword || sessionData.password) && (
               <Badge variant="outline" className="text-xs">
                 <Lock className="h-3 w-3 mr-1" />
                 Protected

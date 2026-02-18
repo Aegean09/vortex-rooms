@@ -32,6 +32,7 @@ import {
   useSubSessionManager,
   useTextChannelManager,
 } from './hooks';
+import { useFirestore } from '@/firebase';
 
 const VoiceControls = dynamic(
   () =>
@@ -46,6 +47,16 @@ const VoiceControls = dynamic(
 
 export default function SessionPage() {
   const { sessionId, authUser, isUserLoading, username, avatarStyle, avatarSeed } = useSessionAuth();
+  const firestore = useFirestore();
+
+  const { hasJoined } = useSessionPresence({
+    firestore,
+    authUser,
+    sessionId,
+    username,
+    avatarStyle,
+    avatarSeed,
+  });
 
   const {
     firestore,
@@ -63,9 +74,7 @@ export default function SessionPage() {
     currentUser,
     presenter,
     isSomeoneScreenSharing,
-  } = useSessionData(sessionId, authUser);
-
-  useSessionPresence({ firestore, authUser, sessionId, username, avatarStyle, avatarSeed });
+  } = useSessionData(sessionId, authUser, { skipParticipantCollections: !hasJoined });
 
   useJoinSound({ users, subSessionsData, currentUser });
 
@@ -137,7 +146,14 @@ export default function SessionPage() {
     }
   }, [firestore, authUser, sessionId]);
 
-  if (isUserLoading || usersLoading || isSubSessionsLoading || !username || !authUser || !sessionData && isSessionLoading) {
+  if (
+    isUserLoading ||
+    !username ||
+    !authUser ||
+    (!sessionData && isSessionLoading) ||
+    (!hasJoined && !!authUser && !!username) ||
+    (hasJoined && (usersLoading || isSubSessionsLoading))
+  ) {
     return <SessionLoader />;
   }
 

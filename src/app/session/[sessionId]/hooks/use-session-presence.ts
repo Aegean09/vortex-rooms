@@ -1,4 +1,4 @@
-import { useEffect, useCallback } from 'react';
+import { useEffect, useCallback, useState } from 'react';
 import {
   collection,
   doc,
@@ -29,6 +29,8 @@ export const useSessionPresence = ({
   avatarStyle,
   avatarSeed,
 }: UseSessionPresenceParams) => {
+  const [hasJoined, setHasJoined] = useState(false);
+
   const handleLeave = useCallback(async () => {
     if (!firestore || !authUser) {
       return;
@@ -89,6 +91,7 @@ export const useSessionPresence = ({
           }
         }
       }
+      setHasJoined(true);
     };
     
     initPresence();
@@ -101,5 +104,5 @@ export const useSessionPresence = ({
     };
   }, [firestore, authUser, sessionId, username, handleLeave]);
 
-  return { handleLeave };
+  return { handleLeave, hasJoined };
 };

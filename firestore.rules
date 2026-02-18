@@ -178,5 +178,13 @@ service cloud.firestore {
           allow read, write: if isParticipant(sessionId);
         }
     }
+
+    /**
+     * @description Room password hashes (Option C). Only Cloud Function (Admin SDK) may read/write.
+     * Client has no access; hash never exposed.
+     */
+    match /roomSecrets/{sessionId} {
+      allow read, write: if false;
+    }
   }
 }
