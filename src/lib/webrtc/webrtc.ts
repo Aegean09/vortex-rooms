@@ -60,7 +60,7 @@ export const createPeerConnection = (
         const candidate = new RTCIceCandidate(change.doc.data());
         if (pc.signalingState !== 'closed') {
           if (pc.remoteDescription) {
-            pc.addIceCandidate(candidate).catch(e => console.error("Error adding received ICE candidate", e));
+          pc.addIceCandidate(candidate).catch(e => console.error("Error adding received ICE candidate", e));
           } else {
             pc.pendingCandidates!.push(candidate);
           }
