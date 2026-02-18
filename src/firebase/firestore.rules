@@ -63,12 +63,17 @@ service cloud.firestore {
       return request.resource.data.get('name', '') is string
           && request.resource.data.get('name', '').size() <= 30;
     }
+    function isRoomUnderCapacity(sessionId) {
+      let s = get(/databases/$(database)/documents/sessions/$(sessionId)).data;
+      return s.get('maxUsers', 999) == null || s.get('participantCount', 0) < s.get('maxUsers', 999);
+    }
     match /sessions/{sessionId}/users/{userId} {
       allow get, list: if isParticipant(sessionId);
       allow create: if isOwner(userId)
                     && request.resource.data.sessionId == sessionId
                     && request.resource.data.id == userId
-                    && isValidUserName();
+                    && isValidUserName()
+                    && isRoomUnderCapacity(sessionId);
       allow update: if isOwner(userId) && isExistingDoc()
                     && request.resource.data.sessionId == resource.data.sessionId
                     && request.resource.data.id == resource.data.id

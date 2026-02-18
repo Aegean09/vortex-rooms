@@ -2,8 +2,8 @@
 
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { useAuth, useUser, useFirestore, setDocumentNonBlocking, useMemoFirebase, useDoc, useCollection } from '@/firebase';
-import { doc, serverTimestamp, collection } from 'firebase/firestore';
+import { useAuth, useUser, useFirestore, setDocumentNonBlocking, useMemoFirebase, useDoc } from '@/firebase';
+import { doc, serverTimestamp } from 'firebase/firestore';
 import { initiateAnonymousSignIn } from '@/firebase/non-blocking-login';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -46,12 +46,7 @@ export default function SetupPage() {
     () => (firestore ? doc(firestore, 'sessions', sessionId) : null),
     [firestore, sessionId]
   );
-  const usersRef = useMemoFirebase(
-    () => (firestore ? collection(firestore, 'sessions', sessionId, 'users') : null),
-    [firestore, sessionId]
-  );
   const { data: sessionData } = useDoc<any>(sessionRef);
-  const { data: users } = useCollection<any>(usersRef);
 
   useEffect(() => {
     if (sessionData?.password && !requiresPassword) {
@@ -161,9 +156,9 @@ export default function SetupPage() {
     setIsJoining(true);
 
     const existingMaxUsers = sessionData?.maxUsers;
-    const currentUserCount = users?.length || 0;
+    const currentParticipantCount = sessionData?.participantCount ?? 0;
 
-    if (existingMaxUsers && currentUserCount >= existingMaxUsers) {
+    if (existingMaxUsers && currentParticipantCount >= existingMaxUsers) {
       toast({
         variant: 'destructive',
         title: 'Room Full',
@@ -197,6 +192,7 @@ export default function SetupPage() {
         }
         if (maxUsers.trim() && !isNaN(Number(maxUsers)) && Number(maxUsers) > 0) {
           newSessionData.maxUsers = Number(maxUsers);
+          newSessionData.participantCount = 0;
         }
       }
     }
