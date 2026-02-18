@@ -4,6 +4,29 @@ All notable changes to this project are documented in this file. Versions follow
 
 ---
 
+## [0.5.0] — E2E message encryption & new-joiner protections (VR-23)
+
+### Added
+
+- **E2E message encryption (optional per room)** — Megolm via `@matrix-org/olm` (WASM); messages encrypted client-side before writing to Firestore; `e2eEnabled` on session; ciphertext + `e2e: true` in message docs.
+- **Per-participant keys** — Each user has an OutboundGroupSession and publishes key at `sessions/{sessionId}/e2e/{userId}`; multiple keys per user (array) for rotation; `latestKeyCreatedAt` (seconds) for rule comparison.
+- **New joiners don't see old messages** — `joinedAt` on user doc (set when first joining); client filters messages by `timestamp >= joinedAt`; E2E hook only uses keys with `createdAt >= joinedAtMs`.
+- **Key rotation on new participant** — When `participantCount` increases, existing participants create a new OutboundGroupSession and publish; new joiner only receives keys published at or after their join time.
+- **Firestore rule for E2E key read** — Read of `sessions/{sessionId}/e2e/{userId}` allowed only if reader is participant and (own doc, or doc has no `latestKeyCreatedAt`, or `latestKeyCreatedAt >= reader.joinedAt.seconds`). Backward compatible for docs without `latestKeyCreatedAt`.
+- **Olm same-origin loading** — `/olm.js` and `/olm.wasm` in `public/` to satisfy CSP; no CDN script.
+
+### Changed
+
+- **Firestore** — E2E key path: `e2e/{userId}` (one doc per user); write only own doc (`userId == request.auth.uid`). Message create allows optional `e2e` and up to 12000 chars when `e2e == true`.
+- **Session presence** — E2E setup runs only after `hasJoined` so participant doc exists before reading/writing e2e keys.
+- **Creator outbound persistence** — OutboundGroupSession pickled to sessionStorage and restored on effect re-run so creator's later messages stay E2E.
+
+### Fixed
+
+- Permission errors when loading E2E key before user doc existed; joiner encrypt returning null (plain fallback); only first message E2E (outbound cleared on effect re-run); each user only seeing their own messages (inbound for self added).
+
+---
+
 ## [0.4.0] — Session & web security (Phase 3)
 
 ### Security
@@ -53,7 +76,7 @@ All notable changes to this project are documented in this file. Versions follow
 
 ### Documentation
 
-- Added `docs/SECURITY-ANALYSIS-AND-ROADMAP.md`: security analysis and Phase 1–2–3 roadmap.
+- Added `docs/ROADMAP.md`: security analysis, Phase 1–2–3, room password Option C, and next-phase roadmap (see repo history for legacy filenames).
 
 ---
 
@@ -72,6 +95,7 @@ Pre–public release; baseline for early / close-circle use.
 
 ---
 
+[0.5.0]: https://github.com/egedurmaz/vortex-rooms/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/egedurmaz/vortex-rooms/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/egedurmaz/vortex-rooms/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/egedurmaz/vortex-rooms/compare/v0.1.0...v0.2.0

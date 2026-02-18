@@ -10,12 +10,12 @@
 
 <p align="center">
   <a href="https://vortex-rooms.com">vortex-rooms.com</a>
-  · <strong>v0.4.0</strong>
+  · <strong>v0.5.0</strong>
   · <a href="#changelog">Changelog</a>
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.4.0-blue?style=flat-square" alt="Version" />
+  <img src="https://img.shields.io/badge/version-0.5.0-blue?style=flat-square" alt="Version" />
   <img src="https://img.shields.io/badge/Next.js-15-black?style=flat-square&logo=next.js" alt="Next.js" />
   <img src="https://img.shields.io/badge/React-19-61DAFB?style=flat-square&logo=react" alt="React" />
   <img src="https://img.shields.io/badge/WebRTC-P2P-333?style=flat-square&logo=webrtc" alt="WebRTC" />
@@ -50,6 +50,12 @@ Create a room, share the link, and talk. That's it. No downloads, no sign-ups, n
 - General voice & text channels always present
 - Optional room passwords (hashed server-side in Firestore `roomSecrets`; only Cloud Functions read/write — Option C)
 - DiceBear avatar generation per user
+
+**E2E message encryption (optional per room)**
+- Megolm (Olm) via `@matrix-org/olm`; messages encrypted client-side before Firestore
+- Per-participant keys: each user has an OutboundGroupSession and publishes their key at `sessions/{sessionId}/e2e/{userId}`
+- New joiners do not see messages sent before they joined (client filter + optional Firestore rule)
+- Key rotation when a new participant joins; Firestore rule restricts key read to `joinedAt <= key createdAt`
 
 **Infrastructure**
 - Firebase Firestore as the signaling server (no WebSocket backend)
@@ -178,6 +184,7 @@ vortex-rooms/
 │   │       ├── use-screen-share.ts
 │   │       ├── use-local-voice-activity.ts
 │   │       └── use-remote-voice-activity.ts
+│   ├── lib/e2e/                              # E2E: Olm loader, Megolm outbound/inbound, key storage
 │   └── firebase/                             # Firebase config, hooks, auth
 ├── cloud-jobs/                               # Scheduled session cleanup (Node.js)
 ├── .github/workflows/
@@ -192,7 +199,8 @@ vortex-rooms/
 - **No accounts** — anonymous Firebase auth, zero PII
 - **Ephemeral** — sessions auto-delete after 24 hours
 - **P2P media** — audio and video never touch a server
-- **Firestore rules** — session-based access control; content gated behind participation checks; room password hashes in `roomSecrets` (no client read/write)
+- **Firestore rules** — session-based access control; content gated behind participation checks; room password hashes in `roomSecrets` (no client read/write); E2E key read restricted by join time
+- **E2E (optional)** — Megolm; ciphertext in Firestore; new joiners cannot decrypt pre-join messages; key read rule enforces `joinedAt <= key createdAt`
 - **Client-side cleanup** — `beforeunload` + React unmount + optional scheduled cloud job
 
 ## Scaling Limits
@@ -213,9 +221,9 @@ This is intentional. Vortex is built for small, private rooms with zero infrastr
 - [x] Voice activity indicators
 - [x] Room passwords (Option C — hash in `roomSecrets`, callables only)
 - [x] Automated session cleanup
+- [x] E2E message encryption (Megolm/Olm; per-participant keys; new-joiner visibility and key-read rules)
 
 **Planned**
-- [ ] E2E message encryption
 - [ ] SFU (scalable voice/video for larger rooms)
 - [ ] TURN server (NAT traversal)
 - [ ] Custom themes
@@ -229,6 +237,7 @@ See **[CHANGELOG.md](./CHANGELOG.md)** for what changed in each version.
 
 | Version | Summary |
 |---------|---------|
+| **0.5.0** | E2E message encryption (Megolm/Olm), per-participant keys, new joiners don't see old messages, key rotation on join, Firestore rule for key read by join time (VR-23) |
 | **0.4.0** | Session ID 12 chars, security headers (CSP, X-Frame-Options, etc.), join form 12-char room code, room password Option C (hash in roomSecrets) |
 | **0.3.0** | Message limit (2000 chars), field validation, username limit (30 chars), send cooldown (800 ms) |
 | **0.2.0** | Firestore rules: participant-only access for messages, users, session, calls, subsessions |

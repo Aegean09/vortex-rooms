@@ -7,14 +7,16 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Send, Hash, MessageCircle, Shield, Zap } from 'lucide-react';
 import { type Message } from '@/interfaces/session';
 import { DiceBearAvatar } from '@/components/dicebear-avatar/dicebear-avatar';
+import { MESSAGE_CONTENT_MAX_LENGTH } from '@/constants/common';
 
 interface ChatAreaProps {
   messages: Message[];
   onSendMessage: (text: string) => void;
   channelName: string;
+  canSendMessage?: boolean;
 }
 
-export function ChatArea({ messages, onSendMessage, channelName }: ChatAreaProps) {
+export function ChatArea({ messages, onSendMessage, channelName, canSendMessage = true }: ChatAreaProps) {
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const [newMessage, setNewMessage] = React.useState('');
 
@@ -83,15 +85,19 @@ export function ChatArea({ messages, onSendMessage, channelName }: ChatAreaProps
         )}
       </ScrollArea>
       <div className="p-4 border-t border-border">
+        {!canSendMessage && (
+          <p className="text-xs text-muted-foreground mb-2">Encryption loading…</p>
+        )}
         <form onSubmit={handleSendMessage} className="flex items-center gap-2">
           <Input
             value={newMessage}
             onChange={(e) => setNewMessage(e.target.value)}
-            placeholder={`Message #${channelName}...`}
+            placeholder={canSendMessage ? `Message #${channelName}...` : 'Wait for encryption…'}
             autoComplete="off"
-            maxLength={2000}
+            maxLength={MESSAGE_CONTENT_MAX_LENGTH}
+            disabled={!canSendMessage}
           />
-          <Button type="submit" size="icon" disabled={!newMessage.trim()}>
+          <Button type="submit" size="icon" disabled={!newMessage.trim() || !canSendMessage}>
             <Send className="h-4 w-4" />
           </Button>
         </form>

@@ -15,6 +15,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Progress } from '@/components/ui/progress';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { generateRandomSeed, AVATAR_STYLE } from '@/helpers/avatar-helpers';
+import { USER_NAME_MAX_LENGTH, ROOM_PASSWORD_MAX_LENGTH } from '@/constants/common';
 
 type RoomType = 'default' | 'custom';
 
@@ -208,6 +209,7 @@ export default function SetupPage() {
 
     if (!sessionData) {
       newSessionData.createdBy = authUser.uid;
+      newSessionData.e2eEnabled = true;
 
       if (roomType === 'custom') {
         if (password.trim()) {
@@ -325,7 +327,7 @@ export default function SetupPage() {
                 autoComplete="off"
                 required
                 minLength={2}
-                maxLength={12}
+                maxLength={USER_NAME_MAX_LENGTH}
                 autoFocus={!requiresPassword}
                 disabled={requiresPassword && !roomPassword.trim()}
               />
@@ -366,7 +368,7 @@ export default function SetupPage() {
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       placeholder="Enter password (optional)"
-                      maxLength={20}
+                      maxLength={ROOM_PASSWORD_MAX_LENGTH}
                       className="h-10"
                     />
                   </div>

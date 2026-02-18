@@ -22,7 +22,7 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { cn } from '@/lib/utils';
-import { doc, updateDoc } from 'firebase/firestore';
+import { doc, updateDoc, Timestamp } from 'firebase/firestore';
 import {
   useSessionAuth,
   useSessionData,
@@ -33,6 +33,7 @@ import {
   useTextChannelManager,
 } from './hooks';
 import { useFirestore } from '@/firebase';
+import { useE2ESession } from '@/lib/e2e';
 
 const VoiceControls = dynamic(
   () =>
@@ -66,6 +67,7 @@ export default function SessionPage() {
     users,
     usersLoading,
     messagesData,
+    messagesLoading,
     subSessionsData,
     isSubSessionsLoading,
     textChannelsData,
@@ -99,7 +101,28 @@ export default function SessionPage() {
     isTextChannelsLoading,
   });
 
-  const { messages, handleSendMessage } = useProcessedMessages({
+  const joinedAtMs = useMemo(() => {
+    const ja = currentUser?.joinedAt;
+    if (!ja) return null;
+    return ja instanceof Timestamp ? ja.toMillis() : (ja as { toMillis?: () => number })?.toMillis?.() ?? null;
+  }, [currentUser?.joinedAt]);
+
+  const e2eEnabled = sessionData?.e2eEnabled === true;
+  const isCreator = sessionData?.createdBy === authUser?.uid;
+  const e2e = useE2ESession({
+    firestore,
+    sessionId,
+    authUserId: authUser?.uid ?? null,
+    joinedAtMs,
+    participantCount: users?.length ?? 0,
+    enabled: e2eEnabled && hasJoined,
+  });
+
+  const e2eHelpers = e2eEnabled
+    ? { encrypt: e2e.encrypt, decrypt: e2e.decrypt, isReady: e2e.isReady }
+    : null;
+
+  const { messages, handleSendMessage, canSendMessage } = useProcessedMessages({
     messagesData,
     users,
     messagesRef,
@@ -108,6 +131,8 @@ export default function SessionPage() {
     username,
     sessionId,
     subSessionId: activeTextChannelId,
+    joinedAtMs,
+    e2e: e2eHelpers,
   });
 
   const [showScreenShare, setShowScreenShare] = useState(false);
@@ -151,7 +176,7 @@ export default function SessionPage() {
     !authUser ||
     (!sessionData && isSessionLoading) ||
     (!hasJoined && !!authUser && !!username) ||
-    (hasJoined && (usersLoading || isSubSessionsLoading))
+    (hasJoined && (usersLoading || isSubSessionsLoading || messagesLoading))
   ) {
     return <SessionLoader />;
   }
@@ -256,6 +281,7 @@ export default function SessionPage() {
                 messages={messages}
                 onSendMessage={handleSendMessage}
                 channelName={activeTextChannelName}
+                canSendMessage={canSendMessage}
               />
             </div>
             {isSomeoneScreenSharing && showScreenShare && (

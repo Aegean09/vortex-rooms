@@ -12,6 +12,7 @@ import { useToast } from '@/hooks/use-toast';
 import { LogIn, ArrowLeft } from 'lucide-react';
 import { useUser } from '@/firebase/provider';
 import { filterRoomCodeInput } from '@/lib/room-code';
+import { ROOM_CODE_LENGTH } from '@/constants/common';
 
 export default function JoinForm() {
   const router = useRouter();
@@ -93,7 +94,7 @@ export default function JoinForm() {
         <CardHeader className="text-center pt-12 sm:pt-6">
           <CardTitle className="text-3xl font-bold">Join a Room</CardTitle>
           <CardDescription className="text-muted-foreground pt-2">
-            Enter the 12-character room code to join an existing room.
+            Enter the {ROOM_CODE_LENGTH}-character room code to join an existing room.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -103,7 +104,7 @@ export default function JoinForm() {
               onChange={(e) => setSessionId(filterRoomCodeInput(e.target.value))}
               placeholder="e.g. f1HtWx9k2LmQ"
               title="Characters 'l' and 'I' are not used in room codes"
-              maxLength={12}
+              maxLength={ROOM_CODE_LENGTH}
               className="text-center text-lg tracking-[0.5em] h-12"
               autoComplete="off"
             />
