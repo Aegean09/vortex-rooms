@@ -122,21 +122,6 @@ NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=your_sender_id
 NEXT_PUBLIC_FIREBASE_APP_ID=your_app_id
 ```
 
-Deploy Firestore security rules:
-
-```bash
-firebase deploy --only firestore:rules
-```
-
-Optional — deploy Cloud Functions (room password hashing + optional session cleanup):
-
-```bash
-cd cloud-jobs
-npm install
-npm run build
-firebase deploy --only functions
-```
-
 Start the dev server:
 
 ```bash
