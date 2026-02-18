@@ -92,7 +92,7 @@ export default function JoinForm() {
         <CardHeader className="text-center pt-12 sm:pt-6">
           <CardTitle className="text-3xl font-bold">Join a Room</CardTitle>
           <CardDescription className="text-muted-foreground pt-2">
-            Enter the 5-character Session ID to join an existing room.
+            Enter the 12-character room code to join an existing room.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -100,8 +100,8 @@ export default function JoinForm() {
             <Input
               value={sessionId}
               onChange={(e) => setSessionId(e.target.value)}
-              placeholder="e.g. f1HtW"
-              maxLength={5}
+              placeholder="e.g. f1HtWx9k2LmQ"
+              maxLength={12}
               className="text-center text-lg tracking-[0.5em] h-12"
               autoComplete="off"
             />
