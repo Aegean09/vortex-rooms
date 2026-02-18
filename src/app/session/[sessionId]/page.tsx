@@ -59,7 +59,6 @@ export default function SessionPage() {
   });
 
   const {
-    firestore,
     sessionRef,
     messagesRef,
     sessionData,
