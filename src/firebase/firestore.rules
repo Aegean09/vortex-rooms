@@ -113,5 +113,9 @@ service cloud.firestore {
           allow read, write: if isParticipant(sessionId);
         }
     }
+
+    match /roomSecrets/{sessionId} {
+      allow read, write: if false;
+    }
   }
 }
