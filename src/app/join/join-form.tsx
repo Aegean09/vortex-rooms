@@ -11,6 +11,7 @@ import { initiateAnonymousSignIn } from '@/firebase/non-blocking-login';
 import { useToast } from '@/hooks/use-toast';
 import { LogIn, ArrowLeft } from 'lucide-react';
 import { useUser } from '@/firebase/provider';
+import { filterRoomCodeInput } from '@/lib/room-code';
 
 export default function JoinForm() {
   const router = useRouter();
@@ -99,8 +100,9 @@ export default function JoinForm() {
           <form onSubmit={handleJoin} className="flex flex-col gap-4">
             <Input
               value={sessionId}
-              onChange={(e) => setSessionId(e.target.value)}
+              onChange={(e) => setSessionId(filterRoomCodeInput(e.target.value))}
               placeholder="e.g. f1HtWx9k2LmQ"
+              title="Characters 'l' and 'I' are not used in room codes"
               maxLength={12}
               className="text-center text-lg tracking-[0.5em] h-12"
               autoComplete="off"
