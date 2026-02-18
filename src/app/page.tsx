@@ -8,7 +8,7 @@ import { Sparkles, LogIn } from 'lucide-react';
 import { RoadmapPopover } from '@/components/roadmap-popover/roadmap-popover';
 import { useAuth, useUser } from '@/firebase';
 import { initiateAnonymousSignIn } from '@/firebase/non-blocking-login';
-import { nanoid } from 'nanoid';
+import { generateRoomCode } from '@/lib/room-code';
 
 export default function HomePage() {
   const router = useRouter();
@@ -23,7 +23,7 @@ export default function HomePage() {
 
   const createRoom = () => {
     if (!authUser) return;
-    const newSessionId = nanoid(12);
+    const newSessionId = generateRoomCode();
     router.push(`/session/${newSessionId}/setup`);
   };
 
