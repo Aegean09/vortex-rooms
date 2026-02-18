@@ -48,13 +48,14 @@ Create a room, share the link, and talk. That's it. No downloads, no sign-ups, n
 - Sub-channels (breakout rooms) — up to 10 people each
 - Independent text channels with real-time messaging
 - General voice & text channels always present
+- Optional room passwords (hashed server-side in Firestore `roomSecrets`; only Cloud Functions read/write — Option C)
 - DiceBear avatar generation per user
 
 **Infrastructure**
 - Firebase Firestore as the signaling server (no WebSocket backend)
 - Anonymous auth — zero PII collected
 - Firestore security rules enforcing session-based access
-- Automated 24-hour session cleanup via GitHub Actions + cloud job
+- Cloud Functions: room password hash (setRoomPassword / verifyRoomPassword) and optional 24-hour session cleanup
 - Tauri-ready for optional desktop builds
 
 ## Architecture
@@ -98,8 +99,9 @@ Mic → AudioContext → [RNNoise AudioWorklet (WASM)] → AnalyserNode → Gain
 
 ### Prerequisites
 
-- Node.js 18+ 
-- A Firebase project with **Firestore** and **Anonymous Auth** enabled
+- Node.js 18+ (Next.js app)
+- Node.js 20 for deploying Cloud Functions (`cloud-jobs/` — Firebase Gen1 does not support Node 18 anymore)
+- A Firebase project with **Firestore**, **Anonymous Auth**, and (optional) **Cloud Functions** enabled
 
 ### Setup
 
@@ -124,6 +126,15 @@ Deploy Firestore security rules:
 
 ```bash
 firebase deploy --only firestore:rules
+```
+
+Optional — deploy Cloud Functions (room password hashing + optional session cleanup):
+
+```bash
+cd cloud-jobs
+npm install
+npm run build
+firebase deploy --only functions
 ```
 
 Start the dev server:
@@ -196,8 +207,8 @@ vortex-rooms/
 - **No accounts** — anonymous Firebase auth, zero PII
 - **Ephemeral** — sessions auto-delete after 24 hours
 - **P2P media** — audio and video never touch a server
-- **Firestore rules** — session-based access control; content gated behind participation checks
-- **Client-side cleanup** — `beforeunload` + React unmount + scheduled cloud job
+- **Firestore rules** — session-based access control; content gated behind participation checks; room password hashes in `roomSecrets` (no client read/write)
+- **Client-side cleanup** — `beforeunload` + React unmount + optional scheduled cloud job
 
 ## Scaling Limits
 
@@ -207,6 +218,7 @@ This is intentional. Vortex is built for small, private rooms with zero infrastr
 
 ## Roadmap
 
+**Done**
 - [x] Peer-to-peer voice chat
 - [x] Text channels (independent from voice)
 - [x] Sub-rooms / breakout rooms
@@ -214,12 +226,17 @@ This is intentional. Vortex is built for small, private rooms with zero infrastr
 - [x] RNNoise AI noise suppression
 - [x] Push-to-talk
 - [x] Voice activity indicators
-- [x] Room passwords
+- [x] Room passwords (Option C — hash in `roomSecrets`, callables only)
 - [x] Automated session cleanup
-- [ ] Video support
-- [ ] Image sharing in chat
-- [ ] TURN server fallback
-- [ ] SFU server
+
+**Planned**
+- [ ] E2E message encryption
+- [ ] SFU (scalable voice/video for larger rooms)
+- [ ] TURN server (NAT traversal)
+- [ ] Custom themes
+- [ ] Camera / video chat
+- [ ] Image and video in chat
+- [ ] Mobile application
 
 ## Changelog
 
@@ -227,7 +244,7 @@ See **[CHANGELOG.md](./CHANGELOG.md)** for what changed in each version.
 
 | Version | Summary |
 |---------|---------|
-| **0.4.0** | Session ID 12 chars, security headers (CSP, X-Frame-Options, etc.), join form 12-char room code |
+| **0.4.0** | Session ID 12 chars, security headers (CSP, X-Frame-Options, etc.), join form 12-char room code, room password Option C (hash in roomSecrets) |
 | **0.3.0** | Message limit (2000 chars), field validation, username limit (30 chars), send cooldown (800 ms) |
 | **0.2.0** | Firestore rules: participant-only access for messages, users, session, calls, subsessions |
 | **0.1.0** | Initial pre-release: P2P voice, screen share, channels, Firestore signaling |
