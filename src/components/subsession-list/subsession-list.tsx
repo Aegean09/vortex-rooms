@@ -16,8 +16,7 @@ import { nanoid } from 'nanoid';
 import { useWebRTC } from '@/lib/webrtc/provider';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useToast } from '@/hooks/use-toast';
-
-const MAX_ROOM_CAPACITY = 10;
+import { MAX_USERS_PER_SUB_SESSION, SUBSESSION_NAME_MAX_LENGTH } from '@/constants/common';
 
 interface SubSessionListProps {
   subSessions: SubSession[];
@@ -63,11 +62,11 @@ export function SubSessionList({ subSessions, users, currentUser, onSubSessionCh
   const handleJoinChannel = (subSessionId: string) => {
     if (subSessionId !== 'general') {
       const usersInRoom = usersBySubSession[subSessionId]?.length ?? 0;
-      if (usersInRoom >= MAX_ROOM_CAPACITY) {
+      if (usersInRoom >= MAX_USERS_PER_SUB_SESSION) {
         toast({
           variant: 'destructive',
           title: 'Room Full',
-          description: `This room has reached the ${MAX_ROOM_CAPACITY}-person limit.`,
+          description: `This room has reached the ${MAX_USERS_PER_SUB_SESSION}-person limit.`,
         });
         return;
       }
@@ -135,7 +134,7 @@ export function SubSessionList({ subSessions, users, currentUser, onSubSessionCh
               placeholder="e.g. Lounge"
               value={newChannelName}
               onChange={(e) => setNewChannelName(e.target.value)}
-              maxLength={20}
+              maxLength={SUBSESSION_NAME_MAX_LENGTH}
               autoFocus
             />
             <DialogFooter>
@@ -155,8 +154,8 @@ export function SubSessionList({ subSessions, users, currentUser, onSubSessionCh
           const sessionUsers = usersBySubSession[subSession.id] || [];
           const isCurrentUserInSession = currentUser?.subSessionId === subSession.id;
           const isGeneral = subSession.id === 'general';
-          const isFull = !isGeneral && sessionUsers.length >= MAX_ROOM_CAPACITY;
-          const countLabel = isGeneral ? `${sessionUsers.length}` : `${sessionUsers.length}/${MAX_ROOM_CAPACITY}`;
+          const isFull = !isGeneral && sessionUsers.length >= MAX_USERS_PER_SUB_SESSION;
+          const countLabel = isGeneral ? `${sessionUsers.length}` : `${sessionUsers.length}/${MAX_USERS_PER_SUB_SESSION}`;
 
           return (
             <AccordionItem value={subSession.id} key={subSession.id} className="border-b-0">
@@ -184,7 +183,7 @@ export function SubSessionList({ subSessions, users, currentUser, onSubSessionCh
                             <Info className="h-3 w-3 mr-1 text-muted-foreground/60 hover:text-muted-foreground cursor-help" />
                           </TooltipTrigger>
                           <TooltipContent side="right" className="max-w-[180px]">
-                            <p className="text-xs">Limited to {MAX_ROOM_CAPACITY} people for optimal sound and video quality.</p>
+                            <p className="text-xs">Limited to {MAX_USERS_PER_SUB_SESSION} people for optimal sound and video quality.</p>
                           </TooltipContent>
                         </Tooltip>
                       </TooltipProvider>
@@ -300,7 +299,7 @@ export function SubSessionList({ subSessions, users, currentUser, onSubSessionCh
                   placeholder="e.g. memes"
                   value={newTextChannelName}
                   onChange={(e) => setNewTextChannelName(e.target.value)}
-                  maxLength={20}
+                  maxLength={SUBSESSION_NAME_MAX_LENGTH}
                   autoFocus
                 />
                 <DialogFooter>

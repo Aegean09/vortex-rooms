@@ -1,17 +1,18 @@
 import { customAlphabet } from 'nanoid';
+import { ROOM_CODE_LENGTH } from '@/constants/common';
 
 /**
  * Room code alphabet: alphanumeric without lowercase "l" or uppercase "I"
  * to avoid confusion in the UI (they look identical in many fonts).
  */
 const ROOM_CODE_ALPHABET =
-  '0123456789abcdefghjkmnopqrstuvwxyzABCDEFGHJKLMNOPQRSTUVWXYZ';
+  '123456789abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ';
 
 /** Regex to strip disallowed characters (l and I) from user input. */
-const DISALLOWED_ROOM_CODE_CHARS = /[lI]/g;
+const DISALLOWED_ROOM_CODE_CHARS = /[lIOo0]/g;
 
-/** Generate a 12-character room code (session ID) without l or I. */
-export const generateRoomCode = customAlphabet(ROOM_CODE_ALPHABET, 12);
+/** Generate a room code (session ID) without l or I; length from ROOM_CODE_LENGTH. */
+export const generateRoomCode = customAlphabet(ROOM_CODE_ALPHABET, ROOM_CODE_LENGTH);
 
 /**
  * Filter room code input: remove lowercase "l" and uppercase "I".

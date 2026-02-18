@@ -87,9 +87,12 @@ service cloud.firestore {
       allow create: if isParticipant(sessionId)
                     && request.resource.data.sessionId == sessionId
                     && request.resource.data.userId == request.auth.uid
-                    && request.resource.data.keys().hasOnly(['sessionId', 'userId', 'subSessionId', 'content', 'timestamp'])
+                    && request.resource.data.keys().hasOnly(['sessionId', 'userId', 'subSessionId', 'content', 'timestamp', 'e2e'])
                     && request.resource.data.content is string
-                    && request.resource.data.content.size() <= 2000;
+                    && (
+                      (request.resource.data.get('e2e', false) == true && request.resource.data.content.size() <= 12000)
+                      || (request.resource.data.get('e2e', false) != true && request.resource.data.content.size() <= 2000)
+                    );
       allow update: if isMessageOwner(resource.data) && isExistingDoc()
                     && request.resource.data.sessionId == resource.data.sessionId
                     && request.resource.data.userId == resource.data.userId;
@@ -106,6 +109,19 @@ service cloud.firestore {
       allow get, list: if isParticipant(sessionId);
       allow create: if isParticipant(sessionId);
       allow delete: if isParticipant(sessionId);
+    }
+
+    match /sessions/{sessionId}/e2e/{userId} {
+      allow read: if isParticipant(sessionId)
+        && (
+          userId == request.auth.uid
+          || resource.data.get('latestKeyCreatedAt') == null
+          || (
+            get(/databases/$(database)/documents/sessions/$(sessionId)/users/$(request.auth.uid)).data.get('joinedAt') != null
+            && resource.data.get('latestKeyCreatedAt') >= get(/databases/$(database)/documents/sessions/$(sessionId)/users/$(request.auth.uid)).data.get('joinedAt').seconds
+          )
+        );
+      allow create, update, delete: if isParticipant(sessionId) && userId == request.auth.uid;
     }
 
     match /sessions/{sessionId}/calls/{callId} {

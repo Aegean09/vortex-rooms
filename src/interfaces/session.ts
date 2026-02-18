@@ -8,6 +8,8 @@ export interface User {
   isMuted?: boolean;
   subSessionId?: string;
   isScreenSharing?: boolean;
+  /** When this user joined the session (for “new joiners don’t see old messages”). */
+  joinedAt?: Timestamp;
 }
 
 export interface SubSession {

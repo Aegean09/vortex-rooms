@@ -8,6 +8,7 @@ import {
   updateDoc,
   deleteDoc,
   increment,
+  serverTimestamp,
 } from 'firebase/firestore';
 import { Firestore } from 'firebase/firestore';
 import { User as FirebaseUser } from 'firebase/auth';
@@ -75,6 +76,7 @@ export const useSessionPresence = ({
       };
       if (!existingDoc.exists()) {
         userData.subSessionId = 'general';
+        userData.joinedAt = serverTimestamp();
       }
       if (avatarStyle) userData.avatarStyle = avatarStyle;
       if (avatarSeed) userData.avatarSeed = avatarSeed;
