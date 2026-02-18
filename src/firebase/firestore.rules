@@ -1,3 +1,4 @@
+
 /**
  * Core Philosophy: This ruleset enforces a session-based security model for a real-time chat application.
  * Access to a session's content (participants and messages) is granted only to users who are active
@@ -10,22 +11,27 @@
  * Key Security Decisions:
  * - Session Discovery: The list of sessions and individual session metadata are publicly readable to allow
  *   users to find and join sessions using a link.
- * - Session Management: Any authenticated user can create a new session. 
- * - Session Deletion: A session can be deleted by a user if they are the last one in the room. This is
- *   enforced by the client logic which performs a batch write. The rules allow a user to delete a session
- *   as long as they are signed in. The real security comes from the client-side check.
+ * - Session Management: Any authenticated user can create a new session.
  * - Session Participation: A user is considered a "participant" if they have a document in the
- *   `/sessions/{sessionId}/users` subcollection where the document ID matches their user ID.
+ *   `/sessions/{sessionId}/users` subcollection where the document ID matches their user ID. This check
+ *   is the cornerstone of the security model.
  * - Content Access: Only session participants can read the user list or messages within that session.
  * - User Actions: Users can join a session (create their own user document), leave a session (delete their
  *   own user document), and send messages. They can only modify or delete their own user document and
  *   their own messages.
+ * - Sub-Session Management: Only participants can create and view sub-sessions (voice channels).
+ *
+ * Denormalization for Authorization: The rules rely on checking for the existence of a user's document
+ * in the `/sessions/{sessionId}/users/{userId}` subcollection to grant access to session content. This
+ * `exists()` check is efficient and avoids reading entire documents, serving as a membership roster that
+ * gates access to the `/users` and `/messages` subcollections.
+ *
+ * SYNC: This file is a copy of the root firestore.rules. Deploy from project root with: firebase deploy --only firestore:rules
  */
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Helper functions for reusable logic
     function isSignedIn() {
       return request.auth != null;
     }
@@ -42,56 +48,55 @@ service cloud.firestore {
       return isSignedIn() && messageData.userId == request.auth.uid;
     }
 
-    /**
-     * @description Controls access to session documents.
-     */
+    function isParticipant(sessionId) {
+      return isSignedIn() && exists(/databases/$(database)/documents/sessions/$(sessionId)/users/$(request.auth.uid));
+    }
+
     match /sessions/{sessionId} {
       allow get, list: if true;
       allow create: if isSignedIn();
-      allow update: if isSignedIn();
-      // Allow a signed-in user to delete a session.
-      // The client logic is responsible for ensuring this is only done
-      // when the user is the last one in the room.
-      allow delete: if isSignedIn(); 
+      allow update: if isParticipant(sessionId);
+      allow delete: if isParticipant(sessionId);
     }
 
-    /**
-     * @description Manages user participation within a session.
-     */
     match /sessions/{sessionId}/users/{userId} {
-      allow get, list: if true;
+      allow get, list: if isParticipant(sessionId);
       allow create: if isOwner(userId)
                     && request.resource.data.sessionId == sessionId
                     && request.resource.data.id == userId;
       allow update: if isOwner(userId) && isExistingDoc()
                     && request.resource.data.sessionId == resource.data.sessionId
                     && request.resource.data.id == resource.data.id;
-      // Allow a user to delete their own user document.
       allow delete: if isOwner(userId);
     }
 
-    /**
-     * @description Manages messages within a session.
-     */
     match /sessions/{sessionId}/messages/{messageId} {
-      allow get, list: if true;
-      allow create: if isSignedIn()
+      allow get, list: if isParticipant(sessionId);
+      allow create: if isParticipant(sessionId)
                     && request.resource.data.sessionId == sessionId
                     && request.resource.data.userId == request.auth.uid;
       allow update: if isMessageOwner(resource.data) && isExistingDoc()
                     && request.resource.data.sessionId == resource.data.sessionId
                     && request.resource.data.userId == resource.data.userId;
-      allow delete: if isMessageOwner(resource.data) && isExistingDoc();
+      allow delete: if isParticipant(sessionId);
     }
 
-    /**
-     * @description Manages WebRTC signaling documents.
-     */
+    match /sessions/{sessionId}/subsessions/{subSessionId} {
+      allow get, list: if isParticipant(sessionId);
+      allow create: if isParticipant(sessionId);
+      allow delete: if isParticipant(sessionId);
+    }
+
+    match /sessions/{sessionId}/textchannels/{textChannelId} {
+      allow get, list: if isParticipant(sessionId);
+      allow create: if isParticipant(sessionId);
+      allow delete: if isParticipant(sessionId);
+    }
+
     match /sessions/{sessionId}/calls/{callId} {
-        allow read, write: if isSignedIn();
-        
+        allow read, write: if isParticipant(sessionId);
         match /{path=**} {
-          allow read, write: if isSignedIn();
+          allow read, write: if isParticipant(sessionId);
         }
     }
   }
