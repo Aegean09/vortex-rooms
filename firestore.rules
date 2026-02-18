@@ -95,36 +95,42 @@ service cloud.firestore {
      * @deny (list) A non-participant cannot list the users in the session.
      * @principle Enforces self-management of session membership and restricts visibility to participants.
      */
+    /**
+     * @description Username (name) max 30 characters. Enforced on create and update.
+     */
+    function isValidUserName() {
+      return request.resource.data.get('name', '') is string
+          && request.resource.data.get('name', '').size() <= 30;
+    }
     match /sessions/{sessionId}/users/{userId} {
       allow get, list: if isParticipant(sessionId);
       allow create: if isOwner(userId)
                     && request.resource.data.sessionId == sessionId
-                    && request.resource.data.id == userId;
+                    && request.resource.data.id == userId
+                    && isValidUserName();
       allow update: if isOwner(userId) && isExistingDoc()
                     && request.resource.data.sessionId == resource.data.sessionId
-                    && request.resource.data.id == resource.data.id;
+                    && request.resource.data.id == resource.data.id
+                    && isValidUserName();
       allow delete: if isOwner(userId);
     }
 
     /**
      * @description Manages messages within a session. Only session participants can read or write messages.
-     *   Users can only modify or delete messages they have personally sent.
+     *   Message create: content max 2000 chars; only allowed fields. Users can only modify/delete own messages.
      * @path /sessions/{sessionId}/messages/{messageId}
-     * @allow (create) A participant of session 'game1' can create a new message.
-     * @deny (delete) A participant cannot delete a message written by another user.
-     * @deny (list) A non-participant cannot read the messages in the session.
-     * @principle Combines shared access for reads/creates with strict ownership for updates/deletes.
      */
     match /sessions/{sessionId}/messages/{messageId} {
       allow get, list: if isParticipant(sessionId);
       allow create: if isParticipant(sessionId)
                     && request.resource.data.sessionId == sessionId
-                    && request.resource.data.userId == request.auth.uid;
+                    && request.resource.data.userId == request.auth.uid
+                    && request.resource.data.keys().hasOnly(['sessionId', 'userId', 'subSessionId', 'content', 'timestamp'])
+                    && request.resource.data.content is string
+                    && request.resource.data.content.size() <= 2000;
       allow update: if isMessageOwner(resource.data) && isExistingDoc()
                     && request.resource.data.sessionId == resource.data.sessionId
                     && request.resource.data.userId == resource.data.userId;
-      // Allow any participant to delete any message.
-      // This is necessary for the "last user leaves" cleanup logic.
       allow delete: if isParticipant(sessionId);
     }
     

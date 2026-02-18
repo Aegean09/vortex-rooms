@@ -10,9 +10,12 @@
 
 <p align="center">
   <a href="https://vortex-rooms.com">vortex-rooms.com</a>
+  · <strong>v0.3.0</strong>
+  · <a href="#changelog">Changelog</a>
 </p>
 
 <p align="center">
+  <img src="https://img.shields.io/badge/version-0.3.0-blue?style=flat-square" alt="Version" />
   <img src="https://img.shields.io/badge/Next.js-15-black?style=flat-square&logo=next.js" alt="Next.js" />
   <img src="https://img.shields.io/badge/React-19-61DAFB?style=flat-square&logo=react" alt="React" />
   <img src="https://img.shields.io/badge/WebRTC-P2P-333?style=flat-square&logo=webrtc" alt="WebRTC" />
@@ -217,6 +220,18 @@ This is intentional. Vortex is built for small, private rooms with zero infrastr
 - [ ] Image sharing in chat
 - [ ] TURN server fallback
 - [ ] SFU server
+
+## Changelog
+
+See **[CHANGELOG.md](./CHANGELOG.md)** for what changed in each version.
+
+| Version | Summary |
+|---------|---------|
+| **0.3.0** | Message limit (2000 chars), field validation, username limit (30 chars), send cooldown (800 ms) |
+| **0.2.0** | Firestore rules: participant-only access for messages, users, session, calls, subsessions |
+| **0.1.0** | Initial pre-release: P2P voice, screen share, channels, Firestore signaling |
+
+---
 
 ## Author
 

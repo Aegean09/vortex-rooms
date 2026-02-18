@@ -89,6 +89,7 @@ export function ChatArea({ messages, onSendMessage, channelName }: ChatAreaProps
             onChange={(e) => setNewMessage(e.target.value)}
             placeholder={`Message #${channelName}...`}
             autoComplete="off"
+            maxLength={2000}
           />
           <Button type="submit" size="icon" disabled={!newMessage.trim()}>
             <Send className="h-4 w-4" />

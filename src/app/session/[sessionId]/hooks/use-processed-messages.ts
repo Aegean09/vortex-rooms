@@ -1,5 +1,7 @@
-import { useMemo, useCallback } from 'react';
+import { useMemo, useCallback, useRef } from 'react';
 import { addDoc, serverTimestamp, Timestamp } from 'firebase/firestore';
+
+const SEND_MESSAGE_COOLDOWN_MS = 800;
 import { CollectionReference, DocumentReference } from 'firebase/firestore';
 import { type User, type Message } from '@/interfaces/session';
 import { User as FirebaseUser } from 'firebase/auth';
@@ -56,9 +58,14 @@ export const useProcessedMessages = ({
       }));
   }, [messagesData, users, subSessionId]);
 
+  const lastSendTimeRef = useRef<number>(0);
+
   const handleSendMessage = useCallback(
     (text: string) => {
       if (!username || !authUser || !messagesRef || !sessionRef) return;
+      const now = Date.now();
+      if (now - lastSendTimeRef.current < SEND_MESSAGE_COOLDOWN_MS) return;
+      lastSendTimeRef.current = now;
       addDoc(messagesRef, {
         userId: authUser.uid,
         sessionId,
