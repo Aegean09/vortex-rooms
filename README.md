@@ -54,8 +54,8 @@ Create a room, share the link, and talk. That's it. No downloads, no sign-ups, n
 **E2E message encryption (optional per room)**
 - Megolm (Olm) via `@matrix-org/olm`; messages encrypted client-side before Firestore
 - Per-participant keys: each user has an OutboundGroupSession and publishes their key at `sessions/{sessionId}/e2e/{userId}`
-- New joiners do not see messages sent before they joined (client filter + optional Firestore rule)
-- Key rotation when a new participant joins; Firestore rule restricts key read to `joinedAt <= key createdAt`
+- New joiners do not see or decrypt messages sent before they joined (client-side filter by `joinedAt`)
+- Key rotation when a new participant joins; only session participants can read E2E key docs (Firestore rules)
 
 **Infrastructure**
 - Firebase Firestore as the signaling server (no WebSocket backend)

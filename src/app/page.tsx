@@ -43,8 +43,8 @@ export default function HomePage() {
           </div>
           <CardTitle className="text-4xl font-bold tracking-tighter bg-clip-text text-transparent bg-gradient-to-r from-primary to-accent">Vortex</CardTitle>
           <CardDescription className="text-muted-foreground pt-2">
-            Instant, ephemeral voice and text chat rooms.
-            <p>No sign-up required. Your session is temporary.</p>
+            Instant, ephemeral voice and text chat rooms. Optional end-to-end encryption for messages (Megolm).
+            <p className="mt-1">No sign-up required. Your session is temporary.</p>
           </CardDescription>
         </CardHeader>
         <CardContent>

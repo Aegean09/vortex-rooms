@@ -4,7 +4,7 @@ import React, { useEffect, useRef } from 'react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Send, Hash, MessageCircle, Shield, Zap } from 'lucide-react';
+import { Send, Hash, MessageCircle, Shield, Zap, Lock } from 'lucide-react';
 import { type Message } from '@/interfaces/session';
 import { DiceBearAvatar } from '@/components/dicebear-avatar/dicebear-avatar';
 import { MESSAGE_CONTENT_MAX_LENGTH } from '@/constants/common';
@@ -50,9 +50,18 @@ export function ChatArea({ messages, onSendMessage, channelName, canSendMessage 
               <MessageCircle className="h-8 w-8 text-primary/60" />
             </div>
             <h3 className="text-lg font-semibold text-foreground mb-1">Welcome to Vortex</h3>
-            <p className="text-sm text-muted-foreground mb-6 max-w-xs">
+            <p className="text-sm text-muted-foreground mb-4 max-w-xs">
               This is the start of the channel. Invite your friends and start chatting!
             </p>
+            <div className="rounded-lg border border-primary/30 bg-primary/5 px-4 py-3 mb-6 max-w-sm">
+              <div className="flex items-center gap-2 justify-center mb-1.5">
+                <Lock className="h-4 w-4 text-primary" />
+                <span className="text-sm font-semibold text-foreground">End-to-end encrypted</span>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                When E2E is enabled for this room, only participants can decrypt messages. Nothing readable is stored on the server.
+              </p>
+            </div>
             <div className="flex flex-col gap-3 text-xs text-muted-foreground/80">
               <div className="flex items-center gap-2">
                 <Zap className="h-3.5 w-3.5 text-primary/50" />

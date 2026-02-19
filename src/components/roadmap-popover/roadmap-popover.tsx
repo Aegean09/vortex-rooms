@@ -29,11 +29,12 @@ import {
   Lock,
   Radio,
   Globe,
+  CheckCircle2,
 } from 'lucide-react';
 import { useIsMobile } from '@/hooks/use-mobile';
 
 const ROADMAP_FEATURES = [
-  { icon: Lock, label: 'E2E Message Encryption', status: 'planned' as const },
+  { icon: Lock, label: 'E2E Message Encryption', status: 'done' as const },
   { icon: Radio, label: 'SFU (Scalable Voice/Video)', status: 'planned' as const },
   { icon: Globe, label: 'TURN Server (NAT Traversal)', status: 'planned' as const },
   { icon: Paintbrush, label: 'Custom Themes', status: 'planned' as const },
@@ -59,17 +60,21 @@ function RoadmapItem({ feature }: { feature: (typeof ROADMAP_FEATURES)[number] }
       <Badge
         variant="outline"
         className={`text-[10px] px-1.5 py-0 h-5 gap-1 font-normal ${
-          feature.status === 'in_progress'
-            ? 'text-primary border-primary/40'
-            : 'text-muted-foreground border-muted-foreground/30'
+          feature.status === 'done'
+            ? 'text-green-600 dark:text-green-400 border-green-500/40'
+            : feature.status === 'in_progress'
+              ? 'text-primary border-primary/40'
+              : 'text-muted-foreground border-muted-foreground/30'
         }`}
       >
-        {feature.status === 'in_progress' ? (
+        {feature.status === 'done' ? (
+          <CheckCircle2 className="h-2.5 w-2.5" />
+        ) : feature.status === 'in_progress' ? (
           <LoaderCircle className="h-2.5 w-2.5 animate-spin" />
         ) : (
           <CircleDot className="h-2.5 w-2.5" />
         )}
-        {feature.status === 'in_progress' ? 'In Progress' : 'Planned'}
+        {feature.status === 'done' ? 'Done' : feature.status === 'in_progress' ? 'In Progress' : 'Planned'}
       </Badge>
     </div>
   );
