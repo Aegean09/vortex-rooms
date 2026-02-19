@@ -60,7 +60,7 @@ export const createPeerConnection = (
         const candidate = new RTCIceCandidate(change.doc.data());
         if (pc.signalingState !== 'closed') {
           if (pc.remoteDescription) {
-          pc.addIceCandidate(candidate).catch(e => console.error("Error adding received ICE candidate", e));
+          pc.addIceCandidate(candidate).catch(() => {});
           } else {
             pc.pendingCandidates!.push(candidate);
           }
@@ -85,8 +85,8 @@ export const createPeerConnection = (
         if (pc.connectionState === 'disconnected') {
           try {
             pc.restartIce();
-          } catch (e) {
-            console.error(`Error restarting ICE for ${callId}:`, e);
+          } catch {
+            // ignore
           }
         }
       }, 2000);
@@ -99,8 +99,8 @@ export const createPeerConnection = (
         if (pc.iceConnectionState === 'disconnected' || pc.iceConnectionState === 'failed') {
           try {
             pc.restartIce();
-          } catch (e) {
-            console.error(`Error restarting ICE for ${callId}:`, e);
+          } catch {
+            // ignore
           }
         }
       }, 2000);
@@ -113,7 +113,7 @@ export const createPeerConnection = (
 const flushPendingCandidates = (pc: PeerConnectionWithUnsubscribe) => {
   if (pc.pendingCandidates?.length) {
     for (const candidate of pc.pendingCandidates) {
-      pc.addIceCandidate(candidate).catch(e => console.error("Error adding buffered ICE candidate", e));
+      pc.addIceCandidate(candidate).catch(() => {});
     }
     pc.pendingCandidates = [];
   }
@@ -140,7 +140,7 @@ export const createOffer = async (
       const answerDescription = new RTCSessionDescription(data.answer);
       pc.setRemoteDescription(answerDescription)
         .then(() => flushPendingCandidates(pcExt))
-        .catch(e => console.error("Failed to set remote description: ", e));
+        .catch(() => {});
     }
   });
 
@@ -198,7 +198,7 @@ export const handleOffer = async (
     };
 
     await setDoc(callDocRef, { answer }, { merge: true });
-  } catch (error) {
-    console.error("Error handling offer:", error);
+  } catch {
+    // ignore
   }
 };

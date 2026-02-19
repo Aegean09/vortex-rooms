@@ -34,6 +34,7 @@ import {
 } from './hooks';
 import { useFirestore } from '@/firebase';
 import { useE2ESession } from '@/lib/e2e';
+import { useToast } from '@/hooks/use-toast';
 
 const VoiceControls = dynamic(
   () =>
@@ -49,6 +50,7 @@ const VoiceControls = dynamic(
 export default function SessionPage() {
   const { sessionId, authUser, isUserLoading, username, avatarStyle, avatarSeed } = useSessionAuth();
   const firestore = useFirestore();
+  const { toast } = useToast();
 
   const { hasJoined } = useSessionPresence({
     firestore,
@@ -118,6 +120,16 @@ export default function SessionPage() {
     enabled: e2eEnabled && hasJoined,
   });
 
+  useEffect(() => {
+    if (e2eEnabled && e2e.error) {
+      toast({
+        title: 'E2E encryption issue',
+        description: e2e.error,
+        variant: 'destructive',
+      });
+    }
+  }, [e2eEnabled, e2e.error, toast]);
+
   const e2eHelpers = e2eEnabled
     ? { encrypt: e2e.encrypt, decrypt: e2e.decrypt, isReady: e2e.isReady }
     : null;
@@ -166,7 +178,7 @@ export default function SessionPage() {
     sessionStorage.setItem(`vortex-avatar-seed-${sessionId}`, newSeed);
     if (firestore && authUser) {
       const userDocRef = doc(firestore, 'sessions', sessionId, 'users', authUser.uid);
-      updateDoc(userDocRef, { avatarSeed: newSeed }).catch(console.error);
+      updateDoc(userDocRef, { avatarSeed: newSeed }).catch(() => {});
     }
   }, [firestore, authUser, sessionId]);
 

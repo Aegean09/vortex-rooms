@@ -106,14 +106,22 @@ export const useProcessedMessages = ({
   }, [rawMessages, e2e?.isReady, e2e?.decrypt, decryptedMap]);
 
   const messages: Message[] = useMemo(() => {
-    return rawMessages.map((msg) => ({
-      id: msg.id,
-      user: msg.user,
-      text: msg.e2e && e2e?.isReady
-        ? (decryptedMap[msg.id] ?? '…')
-        : msg.content,
-      timestamp: formatMessageTimestamp(msg.timestamp),
-    }));
+    return rawMessages.map((msg) => {
+      let text: string;
+      if (msg.e2e) {
+        if (decryptedMap[msg.id] != null) text = decryptedMap[msg.id];
+        else if (e2e?.isReady) text = '…';
+        else text = '…'; // E2E loading or keys unavailable
+      } else {
+        text = msg.content;
+      }
+      return {
+        id: msg.id,
+        user: msg.user,
+        text,
+        timestamp: formatMessageTimestamp(msg.timestamp),
+      };
+    });
   }, [rawMessages, decryptedMap, e2e?.isReady]);
 
   const handleSendMessage = useCallback(
@@ -132,24 +140,18 @@ export const useProcessedMessages = ({
       };
 
       const useE2E = !!(e2e?.isReady && e2e.encrypt);
-      console.log('[E2E send] useE2E=', useE2E, 'e2e?.isReady=', e2e?.isReady);
-
       if (useE2E) {
         const ciphertext = await e2e!.encrypt(text);
-        console.log('[E2E send] encrypt result:', ciphertext !== null ? `cipher len=${ciphertext?.length}` : 'null');
         if (ciphertext !== null) {
           payload.content = ciphertext;
           payload.e2e = true;
         } else {
           payload.content = text;
-          console.log('[E2E send] fallback plain (encrypt returned null)');
         }
       } else {
         payload.content = text;
       }
-
-      console.log('[E2E send] payload.e2e=', payload.e2e, 'content preview:', typeof payload.content === 'string' ? payload.content.slice(0, 50) : payload.content);
-      addDoc(messagesRef, payload).catch((err) => console.error('[E2E send] addDoc error', err));
+      addDoc(messagesRef, payload).catch(() => {});
     },
     [username, authUser, messagesRef, sessionRef, sessionId, subSessionId, e2e]
   );

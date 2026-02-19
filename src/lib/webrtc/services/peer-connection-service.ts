@@ -57,8 +57,8 @@ export const updatePeerConnectionTracks = async (
       if (sender.track?.id !== newTrack.id) {
         try {
           await sender.replaceTrack(newTrack);
-        } catch (e) {
-          console.error(`Error replacing track for ${remotePeerId}:`, e);
+        } catch {
+          // ignore
         }
       }
     }

@@ -3,6 +3,7 @@ import {
   collection,
   doc,
   getDoc,
+  getDocFromServer,
   getDocs,
   setDoc,
   updateDoc,
@@ -93,9 +94,23 @@ export const useSessionPresence = ({
           }
         }
       }
+      // Ensure our user doc is visible on the SERVER so isParticipant() passes when we
+      // subscribe to e2e/messages (getDoc would return from cache and miss server race).
+      for (let i = 0; i < 8; i++) {
+        try {
+          const verify = await getDocFromServer(userDocRef);
+          if (verify.exists()) {
+            setHasJoined(true);
+            return;
+          }
+        } catch {
+          // retry
+        }
+        await new Promise((r) => setTimeout(r, 150 + i * 100));
+      }
       setHasJoined(true);
     };
-    
+
     initPresence();
 
     window.addEventListener('beforeunload', handleLeave);

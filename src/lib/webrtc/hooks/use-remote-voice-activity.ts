@@ -54,7 +54,7 @@ export const useRemoteVoiceActivity = (params: UseRemoteVoiceActivityParams): Re
 
       Object.entries(analysersRef.current).forEach(([peerId, { analyser, audioContext }]) => {
         if (audioContext && audioContext.state === 'suspended') {
-          audioContext.resume().catch(console.error);
+          audioContext.resume().catch(() => {});
         }
 
         if (audioContext?.state !== 'running') {

@@ -51,6 +51,11 @@ export function useE2ESession({
   const unsubRef = useRef<(() => void) | null>(null);
   const prevParticipantCountRef = useRef<number>(0);
 
+  /** Delay before first E2E subscribe so server has committed users/{uid} with joinedAt (rule race). */
+  const E2E_SUBSCRIBE_DELAY_MS = 350;
+  const E2E_RETRY_DELAY_MS = 600;
+  const E2E_MAX_RETRIES = 3;
+
   useEffect(() => {
     if (!enabled || !firestore || !sessionId || !authUserId) {
       setIsReady(false);
@@ -58,22 +63,13 @@ export function useE2ESession({
     }
 
     let cancelled = false;
+    let retryCount = 0;
 
-    async function setup() {
-      try {
-        const Olm = await getOlm();
-        olmRef.current = Olm;
-
-        let outbound: OutboundSession | null = Outbound.loadOutboundFromStorage(Olm, sessionId);
-        if (!outbound) {
-          outbound = Outbound.createOutboundGroupSession(Olm);
-          Outbound.saveOutboundToStorage(outbound, sessionId);
-          const exported = Outbound.exportSessionKey(outbound);
-          await saveParticipantKey(firestore!, sessionId, authUserId!, exported);
-        }
-        outboundRef.current = outbound;
-
-        unsubRef.current = subscribeParticipantKeys(firestore!, sessionId, (keysMap) => {
+    function doSubscribe() {
+      unsubRef.current = subscribeParticipantKeys(
+        firestore!,
+        sessionId,
+        (keysMap) => {
           const OlmRef = olmRef.current;
           if (cancelled || !OlmRef) return;
           const next: Record<string, InboundSession[]> = {};
@@ -98,7 +94,45 @@ export function useE2ESession({
               setError(null);
             }
           }
-        });
+        },
+        (err) => {
+          if (cancelled) return;
+          const isPermissionDenied =
+            err?.message?.includes('permission') || err?.message?.includes('insufficient');
+          if (isPermissionDenied && retryCount < E2E_MAX_RETRIES) {
+            retryCount++;
+            unsubRef.current?.();
+            unsubRef.current = null;
+            setTimeout(() => {
+              if (cancelled) return;
+              doSubscribe();
+            }, E2E_RETRY_DELAY_MS);
+            return;
+          }
+          setError(err?.message ?? 'E2E keys unavailable (check permissions)');
+          setIsReady(false);
+        }
+      );
+    }
+
+    async function setup() {
+      try {
+        const Olm = await getOlm();
+        olmRef.current = Olm;
+
+        let outbound: OutboundSession | null = Outbound.loadOutboundFromStorage(Olm, sessionId);
+        if (!outbound) {
+          outbound = Outbound.createOutboundGroupSession(Olm);
+          Outbound.saveOutboundToStorage(outbound, sessionId);
+          const exported = Outbound.exportSessionKey(outbound);
+          await saveParticipantKey(firestore!, sessionId, authUserId!, exported);
+        }
+        outboundRef.current = outbound;
+
+        // Brief delay so Firestore rule evaluator sees users/{uid} with joinedAt (avoids race).
+        await new Promise((r) => setTimeout(r, E2E_SUBSCRIBE_DELAY_MS));
+        if (cancelled) return;
+        doSubscribe();
 
         if (!cancelled) {
           setIsReady(true);
@@ -106,7 +140,6 @@ export function useE2ESession({
         }
         prevParticipantCountRef.current = participantCount;
       } catch (e) {
-        console.error('[E2E] setup error', e);
         if (!cancelled) {
           setError(e instanceof Error ? e.message : 'E2E init failed');
           setIsReady(false);
@@ -136,7 +169,7 @@ export function useE2ESession({
       outboundRef.current = newOutbound;
       const exported = Outbound.exportSessionKey(newOutbound);
       await saveParticipantKey(firestore!, sessionId, authUserId!, exported);
-    })().catch(console.error);
+    })().catch(() => {});
   }, [enabled, firestore, sessionId, authUserId, participantCount]);
 
   const decrypt = useCallback(
@@ -159,17 +192,10 @@ export function useE2ESession({
     async (plaintext: string): Promise<string | null> => {
       const Olm = olmRef.current;
       const session = outboundRef.current;
-      console.log('[E2E encrypt] hasOlm=', !!Olm, 'hasOutbound=', !!session, 'isReady=', isReady);
-      if (!Olm || !session || !isReady) {
-        console.log('[E2E encrypt] returning null (missing Olm/outbound/ready)');
-        return null;
-      }
+      if (!Olm || !session || !isReady) return null;
       try {
-        const out = Outbound.encryptPlaintext(session, plaintext);
-        console.log('[E2E encrypt] ok len=', out?.length);
-        return out;
-      } catch (e) {
-        console.error('[E2E encrypt] throw', e);
+        return Outbound.encryptPlaintext(session, plaintext);
+      } catch {
         return null;
       }
     },

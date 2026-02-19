@@ -45,7 +45,7 @@ export const useLocalVoiceActivity = (params: UseLocalVoiceActivityParams): bool
 
     const checkVoiceActivity = () => {
       if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
-        audioContextRef.current.resume().catch(console.error);
+        audioContextRef.current.resume().catch(() => {});
       }
 
       if (analyserRef.current && !isMuted && audioContextRef.current?.state === 'running') {

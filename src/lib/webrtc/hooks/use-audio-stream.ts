@@ -26,8 +26,8 @@ export const useAudioStream = (userId: string | null): UseAudioStreamReturn => {
       try {
         const stream = await getUserMedia();
         setRawStream(stream);
-      } catch (error) {
-        console.error('Error accessing media devices.', error);
+      } catch {
+        // ignore
       }
     };
 

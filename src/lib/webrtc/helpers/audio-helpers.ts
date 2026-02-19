@@ -132,8 +132,7 @@ export const createAudioNodesWithNoiseSuppression = async (
       source.connect(rnnoise);
       rnnoise.connect(analyser);
       rnnoise.connect(gainNode);
-    } catch (error) {
-      console.warn('Failed to load Rnnoise noise suppression, falling back to direct connection:', error);
+    } catch {
       source.connect(analyser);
       source.connect(gainNode);
     }
@@ -224,8 +223,7 @@ export const reconnectNoiseSuppressionOnExistingPipeline = async (
       nodes.source.connect(rnnoise);
       rnnoise.connect(nodes.analyser);
       rnnoise.connect(nodes.gainNode);
-    } catch (error) {
-      console.warn('Failed to load Rnnoise, falling back to direct connection:', error);
+    } catch {
       nodes.source.connect(nodes.analyser);
       nodes.source.connect(nodes.gainNode);
     }
