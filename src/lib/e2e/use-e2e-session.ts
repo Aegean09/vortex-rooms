@@ -288,11 +288,11 @@ export function useE2ESession({
         const Olm = await getOlm();
         olmRef.current = Olm;
 
-        // ── PkDecryption: load from sessionStorage or create fresh ──────────
-        let pkDecResult = PkEncryption.loadPkDecryptionFromStorage(Olm, sessionId);
+        // ── PkDecryption: load from localStorage or create fresh ──────────
+        let pkDecResult = PkEncryption.loadPkDecryptionFromStorage(Olm, authUserId!, sessionId);
         if (!pkDecResult) {
           pkDecResult = PkEncryption.createPkDecryption(Olm);
-          PkEncryption.savePkDecryptionToStorage(pkDecResult.pkDec, pkDecResult.publicKey, sessionId);
+          PkEncryption.savePkDecryptionToStorage(pkDecResult.pkDec, pkDecResult.publicKey, authUserId!, sessionId);
           await savePublicKey(firestore!, sessionId, authUserId!, pkDecResult.publicKey);
         }
         pkDecRef.current = pkDecResult.pkDec;
@@ -301,10 +301,10 @@ export function useE2ESession({
         doSubscribePublicKeys();
 
         // ── Outbound Megolm session ──────────────────────────────────────────
-        let outbound: OutboundSession | null = Outbound.loadOutboundFromStorage(Olm, sessionId);
+        let outbound: OutboundSession | null = Outbound.loadOutboundFromStorage(Olm, authUserId!, sessionId);
         if (!outbound) {
           outbound = Outbound.createOutboundGroupSession(Olm);
-          Outbound.saveOutboundToStorage(outbound, sessionId);
+          Outbound.saveOutboundToStorage(outbound, authUserId!, sessionId);
           const exported = Outbound.exportSessionKey(outbound);
           currentOutboundKeyRef.current = exported;
 
@@ -382,7 +382,7 @@ export function useE2ESession({
       if (!Olm) return;
       // Key rotation: new participant joined → create fresh outbound.
       const newOutbound = Outbound.createOutboundGroupSession(Olm);
-      Outbound.saveOutboundToStorage(newOutbound, sessionId);
+      Outbound.saveOutboundToStorage(newOutbound, authUserId!, sessionId);
       outboundRef.current = newOutbound;
       const exported = Outbound.exportSessionKey(newOutbound);
 
