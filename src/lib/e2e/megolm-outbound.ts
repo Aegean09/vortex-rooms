@@ -3,11 +3,34 @@
 /**
  * Creates an outbound Megolm session and encrypts plaintext.
  * Each function does one thing; caller manages session lifecycle.
+ *
+ * Security: pickle key is a random 32-byte value stored in sessionStorage,
+ * NOT derived from sessionId. This prevents offline guessing attacks.
  */
 
 import type { OlmNamespace } from './types';
 
-type OutboundSession = ReturnType<OlmNamespace['OutboundGroupSession']>;
+type OutboundSession = InstanceType<OlmNamespace['OutboundGroupSession']>;
+
+const OUTBOUND_STORAGE_KEY_PREFIX = 'vortex-e2e-outbound-';
+const OUTBOUND_PICKLE_KEY_PREFIX = 'vortex-e2e-outbound-key-';
+
+/** Generate a cryptographically random base64 string (32 bytes). */
+function generateRandomKey(): string {
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  return btoa(String.fromCharCode(...bytes));
+}
+
+/** Get (or create and persist) the pickle key for this sessionId. */
+function getOrCreatePickleKey(sessionId: string): string {
+  const storageKey = OUTBOUND_PICKLE_KEY_PREFIX + sessionId;
+  const existing = sessionStorage.getItem(storageKey);
+  if (existing) return existing;
+  const key = generateRandomKey();
+  sessionStorage.setItem(storageKey, key);
+  return key;
+}
 
 export function createOutboundGroupSession(Olm: OlmNamespace): OutboundSession {
   const session = new Olm.OutboundGroupSession();
@@ -23,18 +46,12 @@ export function encryptPlaintext(session: OutboundSession, plaintext: string): s
   return session.encrypt(plaintext);
 }
 
-const PICKLE_KEY_PREFIX = 'vortex-e2e-outbound-';
-
-export function pickleOutbound(session: OutboundSession, sessionId: string): string {
-  const key = PICKLE_KEY_PREFIX + sessionId;
-  return session.pickle(key);
-}
-
 export function saveOutboundToStorage(session: OutboundSession, sessionId: string): void {
   if (typeof sessionStorage === 'undefined') return;
   try {
-    const pickled = pickleOutbound(session, sessionId);
-    sessionStorage.setItem(`vortex-e2e-outbound-${sessionId}`, pickled);
+    const pickleKey = getOrCreatePickleKey(sessionId);
+    const pickled = session.pickle(pickleKey);
+    sessionStorage.setItem(OUTBOUND_STORAGE_KEY_PREFIX + sessionId, pickled);
   } catch {
     // ignore
   }
@@ -46,11 +63,11 @@ export function loadOutboundFromStorage(
 ): OutboundSession | null {
   if (typeof sessionStorage === 'undefined') return null;
   try {
-    const pickled = sessionStorage.getItem(`vortex-e2e-outbound-${sessionId}`);
-    if (!pickled) return null;
-    const key = PICKLE_KEY_PREFIX + sessionId;
+    const pickled = sessionStorage.getItem(OUTBOUND_STORAGE_KEY_PREFIX + sessionId);
+    const pickleKey = sessionStorage.getItem(OUTBOUND_PICKLE_KEY_PREFIX + sessionId);
+    if (!pickled || !pickleKey) return null;
     const session = new Olm.OutboundGroupSession();
-    session.unpickle(key, pickled);
+    session.unpickle(pickleKey, pickled);
     return session;
   } catch {
     return null;

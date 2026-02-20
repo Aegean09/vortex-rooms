@@ -456,8 +456,8 @@ export function VoiceControls({ currentUser, onAvatarChange }: VoiceControlsProp
                 : 'Share Screen';
 
             return (
-              <Tooltip>
-                <TooltipTrigger asChild>
+            <Tooltip>
+              <TooltipTrigger asChild>
                   <span tabIndex={0} className="inline-flex">
                     <Button
                       variant={isScreenSharing ? 'destructive' : 'secondary'}
@@ -465,14 +465,14 @@ export function VoiceControls({ currentUser, onAvatarChange }: VoiceControlsProp
                       onClick={handleToggleScreenShare}
                       disabled={isDisabled}
                     >
-                      {isScreenSharing ? <ScreenShareOff className="h-5 w-5" /> : <ScreenShare className="h-5 w-5" />}
-                    </Button>
+                  {isScreenSharing ? <ScreenShareOff className="h-5 w-5" /> : <ScreenShare className="h-5 w-5" />}
+                </Button>
                   </span>
-                </TooltipTrigger>
-                <TooltipContent>
+              </TooltipTrigger>
+              <TooltipContent>
                   <p>{tooltipText}</p>
-                </TooltipContent>
-              </Tooltip>
+              </TooltipContent>
+            </Tooltip>
             );
           })()}
           <Dialog>

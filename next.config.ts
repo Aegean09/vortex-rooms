@@ -51,10 +51,11 @@ const nextConfig: NextConfig = {
             value: [
               "default-src 'self'",
               "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdnjs.buymeacoffee.com",
-              "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+              "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.buymeacoffee.com",
               "img-src 'self' data: https: blob:",
               "font-src 'self' data: https://fonts.gstatic.com",
-              "connect-src 'self' https: wss: *.googleapis.com *.google.com *.firebaseio.com *.firebase.com",
+              "connect-src 'self' https: wss: *.googleapis.com *.google.com *.firebaseio.com *.firebase.com *.buymeacoffee.com",
+              "frame-src 'self' https://buymeacoffee.com https://www.buymeacoffee.com",
               "frame-ancestors 'none'",
               "base-uri 'self'",
               "form-action 'self'",

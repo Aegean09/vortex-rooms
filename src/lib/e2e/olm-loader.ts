@@ -20,6 +20,26 @@ declare global {
         create(session_key: string): string;
         decrypt(message: string): { message_index: number; plaintext: string };
       };
+      Account: new () => {
+        create(): void;
+        identity_keys(): string;
+        pickle(key: string | Uint8Array): string;
+        unpickle(key: string | Uint8Array, pickle: string): void;
+        free(): void;
+      };
+      PkEncryption: new () => {
+        set_recipient_key(key: string): void;
+        encrypt(plaintext: string): { ciphertext: string; mac: string; ephemeral: string };
+        free(): void;
+      };
+      PkDecryption: new () => {
+        generate_key(): string;
+        init_with_private_key(privateKey: Uint8Array): void;
+        decrypt(ephemeral_key: string, mac: string, ciphertext: string): string;
+        pickle(key: string | Uint8Array): string;
+        unpickle(key: string | Uint8Array, pickle: string): void;
+        free(): void;
+      };
     };
   }
 }
@@ -59,7 +79,7 @@ export function getOlm(): Promise<OlmNamespace> {
   if (!olmPromise) {
     olmPromise = loadAndInitOlm();
   }
-  return olmPromise as Promise<OlmNamespace>;
+  return olmPromise as unknown as Promise<OlmNamespace>;
 }
 
 async function loadAndInitOlm(): Promise<NonNullable<typeof window.Olm>> {
