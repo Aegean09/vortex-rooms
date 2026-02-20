@@ -140,7 +140,7 @@ service cloud.firestore {
       allow update: if isMessageOwner(resource.data) && isExistingDoc()
                     && request.resource.data.sessionId == resource.data.sessionId
                     && request.resource.data.userId == resource.data.userId;
-      allow delete: if isParticipant(sessionId);
+      allow delete: if isMessageOwner(resource.data);
     }
     
     /**

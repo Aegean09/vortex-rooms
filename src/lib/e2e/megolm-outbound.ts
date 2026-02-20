@@ -4,7 +4,11 @@
  * Creates an outbound Megolm session and encrypts plaintext.
  * Each function does one thing; caller manages session lifecycle.
  *
- * Security: pickle key is a random 32-byte value stored in sessionStorage,
+ * Storage strategy: localStorage (not sessionStorage) so the outbound session survives tab
+ * close/reopen within the same browser session. Keys are scoped by userId+sessionId.
+ * Call clearOutboundFromStorage() on explicit session leave / logout.
+ *
+ * Security: pickle key is a random 32-byte value stored in localStorage,
  * NOT derived from sessionId. This prevents offline guessing attacks.
  */
 
@@ -12,8 +16,9 @@ import type { OlmNamespace } from './types';
 
 type OutboundSession = InstanceType<OlmNamespace['OutboundGroupSession']>;
 
-const OUTBOUND_STORAGE_KEY_PREFIX = 'vortex-e2e-outbound-';
-const OUTBOUND_PICKLE_KEY_PREFIX = 'vortex-e2e-outbound-key-';
+// localStorage key builders — scoped to userId so different users on same device don't collide.
+const outboundKey    = (userId: string, sessionId: string) => `vortex-e2e-outbound-${userId}-${sessionId}`;
+const outboundPickle = (userId: string, sessionId: string) => `vortex-e2e-outbound-key-${userId}-${sessionId}`;
 
 /** Generate a cryptographically random base64 string (32 bytes). */
 function generateRandomKey(): string {
@@ -22,13 +27,13 @@ function generateRandomKey(): string {
   return btoa(String.fromCharCode(...bytes));
 }
 
-/** Get (or create and persist) the pickle key for this sessionId. */
-function getOrCreatePickleKey(sessionId: string): string {
-  const storageKey = OUTBOUND_PICKLE_KEY_PREFIX + sessionId;
-  const existing = sessionStorage.getItem(storageKey);
+/** Get (or create and persist) the pickle key for this userId+sessionId. */
+function getOrCreatePickleKey(userId: string, sessionId: string): string {
+  const storageKey = outboundPickle(userId, sessionId);
+  const existing = localStorage.getItem(storageKey);
   if (existing) return existing;
   const key = generateRandomKey();
-  sessionStorage.setItem(storageKey, key);
+  localStorage.setItem(storageKey, key);
   return key;
 }
 
@@ -46,12 +51,16 @@ export function encryptPlaintext(session: OutboundSession, plaintext: string): s
   return session.encrypt(plaintext);
 }
 
-export function saveOutboundToStorage(session: OutboundSession, sessionId: string): void {
-  if (typeof sessionStorage === 'undefined') return;
+export function saveOutboundToStorage(
+  session: OutboundSession,
+  userId: string,
+  sessionId: string
+): void {
+  if (typeof localStorage === 'undefined') return;
   try {
-    const pickleKey = getOrCreatePickleKey(sessionId);
+    const pickleKey = getOrCreatePickleKey(userId, sessionId);
     const pickled = session.pickle(pickleKey);
-    sessionStorage.setItem(OUTBOUND_STORAGE_KEY_PREFIX + sessionId, pickled);
+    localStorage.setItem(outboundKey(userId, sessionId), pickled);
   } catch {
     // ignore
   }
@@ -59,12 +68,13 @@ export function saveOutboundToStorage(session: OutboundSession, sessionId: strin
 
 export function loadOutboundFromStorage(
   Olm: OlmNamespace,
+  userId: string,
   sessionId: string
 ): OutboundSession | null {
-  if (typeof sessionStorage === 'undefined') return null;
+  if (typeof localStorage === 'undefined') return null;
   try {
-    const pickled = sessionStorage.getItem(OUTBOUND_STORAGE_KEY_PREFIX + sessionId);
-    const pickleKey = sessionStorage.getItem(OUTBOUND_PICKLE_KEY_PREFIX + sessionId);
+    const pickled   = localStorage.getItem(outboundKey(userId, sessionId));
+    const pickleKey = localStorage.getItem(outboundPickle(userId, sessionId));
     if (!pickled || !pickleKey) return null;
     const session = new Olm.OutboundGroupSession();
     session.unpickle(pickleKey, pickled);
@@ -72,4 +82,14 @@ export function loadOutboundFromStorage(
   } catch {
     return null;
   }
+}
+
+/**
+ * Remove outbound session keys from localStorage.
+ * Call this on explicit session leave or user logout.
+ */
+export function clearOutboundFromStorage(userId: string, sessionId: string): void {
+  if (typeof localStorage === 'undefined') return;
+  localStorage.removeItem(outboundKey(userId, sessionId));
+  localStorage.removeItem(outboundPickle(userId, sessionId));
 }
