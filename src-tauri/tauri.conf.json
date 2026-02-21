@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Vortex",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "identifier": "com.vortex.rooms",
   "build": {
     "frontendDist": "https://studio--studio-538325307-b0443.us-central1.hosted.app",

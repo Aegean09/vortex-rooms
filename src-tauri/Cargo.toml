@@ -1,6 +1,6 @@
 [package]
 name = "vortex"
-version = "0.5.0"
+version = "0.6.0"
 description = "Vortex - Real-time voice and text chat rooms"
 authors = ["Vortex Team"]
 license = "MIT"
