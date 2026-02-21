@@ -25,6 +25,7 @@ import {
   type NoiseSuppressionNodes,
 } from './helpers/audio-helpers';
 import { percentToRms } from '@/helpers/audio-helpers';
+import { applyScreenShareBitrateCap, applyScreenShareCapsToAll } from './services/screen-share-service';
 
 export interface BandwidthStats {
   totalBytesSent: number;
@@ -361,7 +362,9 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
       await updateDoc(userDocRef, { isScreenSharing: false });
     } else {
       try {
-        const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+        const stream = await navigator.mediaDevices.getDisplayMedia({
+          video: { frameRate: { ideal: 15, max: 30 }, width: { ideal: 1920 }, height: { ideal: 1080 } },
+        });
         const videoTrack = stream.getVideoTracks()[0];
         screenShareTrackRef.current = videoTrack;
 
@@ -375,10 +378,12 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
           }
         };
 
+        const peerCount = Object.keys(peerConnections.current).length;
         for (const peerId in peerConnections.current) {
           const pc = peerConnections.current[peerId];
           if (pc) {
             pc.addTrack(videoTrack, stream);
+            await applyScreenShareBitrateCap(pc, peerCount);
             await createOffer(firestore, sessionId, localPeerId, peerId, pc);
           }
         }
@@ -782,12 +787,15 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
           () => cleanupConnection(remotePeerId)
         );
         localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
-        // If we're currently screen sharing, add the screen share track to the new peer
         if (screenShareTrackRef.current && isScreenSharing) {
           const screenStream = new MediaStream([screenShareTrackRef.current]);
           pc.addTrack(screenShareTrackRef.current, screenStream);
         }
         peerConnections.current[remotePeerId] = pc;
+        const currentPeerCount = Object.keys(peerConnections.current).length;
+        if (screenShareTrackRef.current && isScreenSharing) {
+          applyScreenShareCapsToAll(peerConnections.current, currentPeerCount);
+        }
         createOffer(firestore, sessionId, localPeerId, remotePeerId, pc);
       }
     });
@@ -832,12 +840,15 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
                   () => cleanupConnection(remotePeerId)
                 );
                 localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
-                // If we're currently screen sharing, add the screen share track to the new peer
                 if (screenShareTrackRef.current && isScreenSharing) {
                   const screenStream = new MediaStream([screenShareTrackRef.current]);
                   pc.addTrack(screenShareTrackRef.current, screenStream);
                 }
                 peerConnections.current[remotePeerId] = pc;
+                if (screenShareTrackRef.current && isScreenSharing) {
+                  const currentPeerCount = Object.keys(peerConnections.current).length;
+                  applyScreenShareCapsToAll(peerConnections.current, currentPeerCount);
+                }
                 await handleOffer(firestore, change.doc.ref, pc, offerDescription);
               } else {
                 const pc = peerConnections.current[remotePeerId];
