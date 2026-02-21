@@ -69,6 +69,9 @@ export function VoiceControls({ currentUser, onAvatarChange }: VoiceControlsProp
   const [avatarOptions, setAvatarOptions] = useState<string[]>([]);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const animationFrameRef = useRef<number | undefined>(undefined);
+  // Hysteresis state for the local voice-activity preview
+  const vcGateOpenRef   = useRef(false);
+  const vcHoldUntilRef  = useRef(0);
 
   const router = useRouter();
   const { toast } = useToast();
@@ -90,6 +93,7 @@ export function VoiceControls({ currentUser, onAvatarChange }: VoiceControlsProp
 
       const dataArray = new Uint8Array(analyser.frequencyBinCount);
 
+      const HOLD_TIME_MS = 250; // ms — keep indicator lit after signal dips
       const checkVoiceActivity = () => {
         if (analyserRef.current && !isMuted) {
           analyserRef.current.getByteFrequencyData(dataArray);
@@ -100,10 +104,30 @@ export function VoiceControls({ currentUser, onAvatarChange }: VoiceControlsProp
             sum += normalized * normalized;
           }
           const rms = Math.sqrt(sum / dataArray.length);
-
           setCurrentLevel(rms);
-          setVoiceActivity(rms > noiseGateThreshold);
+
+          // Hysteresis: different thresholds to open vs. close the gate
+          // This prevents the indicator from flickering near the threshold.
+          const openThreshold  = noiseGateThreshold * 1.3;
+          const closeThreshold = noiseGateThreshold * 0.65;
+          const now = Date.now();
+
+          if (!vcGateOpenRef.current) {
+            if (rms > openThreshold) {
+              vcGateOpenRef.current = true;
+              vcHoldUntilRef.current = now + HOLD_TIME_MS;
+              setVoiceActivity(true);
+            }
+          } else {
+            if (rms >= closeThreshold) {
+              vcHoldUntilRef.current = now + HOLD_TIME_MS; // refresh hold
+            } else if (now >= vcHoldUntilRef.current) {
+              vcGateOpenRef.current = false;
+              setVoiceActivity(false);
+            }
+          }
         } else {
+          vcGateOpenRef.current = false;
           setVoiceActivity(false);
           setCurrentLevel(0);
         }

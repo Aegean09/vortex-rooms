@@ -20,16 +20,42 @@ import type { OlmNamespace } from './types';
 
 type PkDecryptionObj = InstanceType<OlmNamespace['PkDecryption']>;
 
-// localStorage key builders — scoped to userId so different users on same device don't collide.
-const pkDecKey     = (userId: string, sessionId: string) => `vortex-e2e-pk-${userId}-${sessionId}`;
-const pkPickleKey  = (userId: string, sessionId: string) => `vortex-e2e-pk-pickle-${userId}-${sessionId}`;
-const pkPubKey     = (userId: string, sessionId: string) => `vortex-e2e-pk-pub-${userId}-${sessionId}`;
+// localStorage key builders — scoped to sessionId only (userId changes on refresh with Anonymous Auth).
+// This allows keys to persist across refreshes even if Firebase Anonymous Auth creates a new user.
+const pkDecKey     = (sessionId: string) => `vortex-e2e-pk-${sessionId}`;
+const pkPickleKey  = (sessionId: string) => `vortex-e2e-pk-pickle-${sessionId}`;
+const pkPubKey     = (sessionId: string) => `vortex-e2e-pk-pub-${sessionId}`;
 
 /** Generate a cryptographically random base64 string (32 bytes). */
 function generateRandomKey(): string {
   const bytes = new Uint8Array(32);
   crypto.getRandomValues(bytes);
   return btoa(String.fromCharCode(...bytes));
+}
+
+/**
+ * Test if sessionStorage is available and writable.
+ * In Tauri, sessionStorage should work, but we verify it anyway.
+ * Returns true if sessionStorage is functional, false otherwise.
+ */
+function isSessionStorageAvailable(): boolean {
+  if (typeof sessionStorage === 'undefined') return false;
+  try {
+    const testKey = '__vortex_storage_test__';
+    sessionStorage.setItem(testKey, 'test');
+    sessionStorage.removeItem(testKey);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Check if we're running in Tauri.
+ * Tauri exposes window.__TAURI__ object when running in the desktop app.
+ */
+function isTauri(): boolean {
+  return typeof window !== 'undefined' && '__TAURI__' in window;
 }
 
 // ─── PkDecryption lifecycle ───────────────────────────────────────────────────
@@ -47,60 +73,77 @@ export function createPkDecryption(
 }
 
 /**
- * Pickle (serialize) a PkDecryption object and save it to localStorage
+ * Pickle (serialize) a PkDecryption object and save it to sessionStorage
  * alongside the corresponding public key.
  * The pickle key is a random value (not derived from sessionId).
  */
 export function savePkDecryptionToStorage(
   pkDec: PkDecryptionObj,
   publicKey: string,
-  userId: string,
+  userId: string, // kept for API compatibility, but not used in key
   sessionId: string
 ): void {
-  if (typeof localStorage === 'undefined') return;
+  if (!isSessionStorageAvailable()) {
+    if (isTauri()) {
+      console.warn('[E2E] sessionStorage not available in Tauri — E2E keys will not persist across tab refreshes');
+    }
+    return;
+  }
   try {
     const pickleKey = generateRandomKey();
     const pickled = pkDec.pickle(pickleKey);
-    localStorage.setItem(pkDecKey(userId, sessionId), pickled);
-    localStorage.setItem(pkPickleKey(userId, sessionId), pickleKey);
-    localStorage.setItem(pkPubKey(userId, sessionId), publicKey);
-  } catch {
-    // ignore (e.g. private browsing quota)
+    sessionStorage.setItem(pkDecKey(sessionId), pickled);
+    sessionStorage.setItem(pkPickleKey(sessionId), pickleKey);
+    sessionStorage.setItem(pkPubKey(sessionId), publicKey);
+  } catch (err) {
+    // Quota exceeded or security error
+    if (isTauri()) {
+      console.error('[E2E] Failed to save key to sessionStorage in Tauri:', err);
+    }
+    // ignore — key will be regenerated on next session
   }
 }
 
 /**
- * Load a PkDecryption object from localStorage.
+ * Load a PkDecryption object from sessionStorage.
  * Returns null if not found or unpickling fails.
  */
 export function loadPkDecryptionFromStorage(
   Olm: OlmNamespace,
-  userId: string,
+  userId: string, // kept for API compatibility, but not used in key
   sessionId: string
 ): { pkDec: PkDecryptionObj; publicKey: string } | null {
-  if (typeof localStorage === 'undefined') return null;
+  if (!isSessionStorageAvailable()) return null;
   try {
-    const pickled   = localStorage.getItem(pkDecKey(userId, sessionId));
-    const pickleKey = localStorage.getItem(pkPickleKey(userId, sessionId));
-    const publicKey = localStorage.getItem(pkPubKey(userId, sessionId));
+    const pickled   = sessionStorage.getItem(pkDecKey(sessionId));
+    const pickleKey = sessionStorage.getItem(pkPickleKey(sessionId));
+    const publicKey = sessionStorage.getItem(pkPubKey(sessionId));
     if (!pickled || !pickleKey || !publicKey) return null;
     const pkDec = new Olm.PkDecryption();
     pkDec.unpickle(pickleKey, pickled);
     return { pkDec, publicKey };
-  } catch {
+  } catch (err) {
+    // Corrupted data or unpickle failure
+    if (isTauri()) {
+      console.warn('[E2E] Failed to load key from localStorage in Tauri:', err);
+    }
     return null;
   }
 }
 
 /**
- * Remove PkDecryption keys from localStorage.
+ * Remove PkDecryption keys from sessionStorage.
  * Call this on explicit session leave or user logout.
  */
 export function clearPkDecryptionFromStorage(userId: string, sessionId: string): void {
-  if (typeof localStorage === 'undefined') return;
-  localStorage.removeItem(pkDecKey(userId, sessionId));
-  localStorage.removeItem(pkPickleKey(userId, sessionId));
-  localStorage.removeItem(pkPubKey(userId, sessionId));
+  if (!isSessionStorageAvailable()) return;
+  try {
+    sessionStorage.removeItem(pkDecKey(sessionId));
+    sessionStorage.removeItem(pkPickleKey(sessionId));
+    sessionStorage.removeItem(pkPubKey(sessionId));
+  } catch {
+    // ignore
+  }
 }
 
 // ─── Encryption / Decryption ──────────────────────────────────────────────────

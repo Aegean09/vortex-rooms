@@ -415,6 +415,30 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
 
     const dataArray = new Uint8Array(nodes.analyser.frequencyBinCount);
 
+    // ── Noise gate state ──────────────────────────────────────────────────────
+    // Hysteresis: use a higher threshold to OPEN the gate and a lower threshold
+    // to CLOSE it. This prevents the gate from chattering when the signal hovers
+    // near the threshold value.
+    //
+    // Hold time: once the gate opens, keep it open for at least HOLD_TIME_MS
+    // even if the signal dips below the close threshold. This prevents rapid
+    // flutter on natural speech pauses.
+    //
+    // Smooth gain: use setTargetAtTime() instead of direct .value assignment.
+    //   - Attack (open) : fast (~3 ms) so the first phoneme is not clipped.
+    //   - Release (close): slow (~60 ms) so there is no audible "click" on close.
+    const ATTACK_TC   = 0.003; // seconds — time-constant for opening
+    const RELEASE_TC  = 0.06;  // seconds — time-constant for closing
+    const HOLD_TIME_MS = 250;  // ms — minimum open duration
+    let gateOpen = false;
+    let holdUntil = 0;
+
+    // GainNode defaults to 1.0. Explicitly close the gate before the first tick
+    // so audio doesn't leak through while gateOpen=false but gain=1.0.
+    if (nodes.audioContext) {
+      nodes.gainNode.gain.setValueAtTime(0.0, nodes.audioContext.currentTime);
+    }
+
     const processNoiseGate = () => {
       if (nodes.audioContext && nodes.audioContext.state === 'suspended') {
         nodes.audioContext.resume().catch(() => {});
@@ -434,7 +458,41 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
       const rms = Math.sqrt(sum / dataArray.length);
 
       const shouldMute = isMutedRef.current || (pushToTalkRef.current && !isPressingPushToTalkKeyRef.current);
-      nodes.gainNode.gain.value = (!shouldMute && rms > noiseGateThresholdRef.current) ? 1.0 : 0.0;
+      const threshold     = noiseGateThresholdRef.current;
+      const openThreshold  = threshold * 1.3;  // higher bar to open  → reduces false triggers
+      const closeThreshold = threshold * 0.65; // lower bar to close  → prevents chattering
+
+      const now = Date.now();
+      const ctx = nodes.audioContext!;
+
+      if (shouldMute) {
+        // Force-close immediately when muted / PTT not held.
+        // Use setValueAtTime (instant) not setTargetAtTime (gradual) so mute
+        // takes effect immediately — no audio leaks during the release ramp.
+        if (gateOpen) {
+          gateOpen = false;
+          nodes.gainNode.gain.cancelScheduledValues(ctx.currentTime);
+          nodes.gainNode.gain.setValueAtTime(0.0, ctx.currentTime);
+        }
+      } else if (!gateOpen) {
+        // Gate is closed — open if signal exceeds open threshold
+        if (rms > openThreshold) {
+          gateOpen = true;
+          holdUntil = now + HOLD_TIME_MS;
+          nodes.gainNode.gain.setTargetAtTime(1.0, ctx.currentTime, ATTACK_TC);
+        }
+      } else {
+        // Gate is open
+        if (rms >= closeThreshold) {
+          // Signal is still above close threshold — refresh hold timer
+          holdUntil = now + HOLD_TIME_MS;
+        } else if (now >= holdUntil) {
+          // Signal dropped AND hold time expired — close smoothly
+          gateOpen = false;
+          nodes.gainNode.gain.setTargetAtTime(0.0, ctx.currentTime, RELEASE_TC);
+        }
+        // Otherwise: hold time not yet expired — stay open
+      }
     };
 
     noiseGateTimerRef.current = setInterval(processNoiseGate, 50);

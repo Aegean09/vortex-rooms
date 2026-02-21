@@ -37,7 +37,7 @@ export async function savePublicKey(
 ): Promise<void> {
   const ref = getParticipantKeyRef(firestore, sessionId, userId);
   // Always write: ensures migration from Account-based keys to PkDecryption-based keys.
-  await setDoc(ref, { publicKey, createdAt: Date.now() }, { merge: true });
+    await setDoc(ref, { publicKey, createdAt: Date.now() }, { merge: true });
 }
 
 /**

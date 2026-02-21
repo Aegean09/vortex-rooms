@@ -232,13 +232,6 @@ export function SubSessionList({ subSessions, users, currentUser, onSubSessionCh
                               userIsDeafened && "ring-2 ring-orange-500 ring-offset-2 ring-offset-background"
                             )}
                           />
-                          <span className={cn(
-                            "absolute bottom-0 right-0 block h-2.5 w-2.5 rounded-full border-2 border-card transition-all duration-200",
-                            isSpeaking && !userIsMuted && !userIsDeafened ? "bg-green-500 animate-pulse" :
-                            userIsMuted ? "bg-red-500" :
-                            userIsDeafened ? "bg-orange-500" :
-                            "bg-green-500"
-                          )} />
                         </div>
                         <span className="font-medium text-sm truncate flex-1 flex items-center gap-1.5">
                           {user.name} {isCurrentUser ? '(You)' : ''}
@@ -247,8 +240,7 @@ export function SubSessionList({ subSessions, users, currentUser, onSubSessionCh
                           )}
                         </span>
                         {isSpeaking && !userIsMuted && !userIsDeafened && (
-                          <div className="flex items-center gap-1">
-                            <div className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse" />
+                          <div>
                             <span className="text-[10px] text-muted-foreground">Speaking</span>
                           </div>
                         )}

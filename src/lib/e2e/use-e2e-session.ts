@@ -57,7 +57,7 @@ export function useE2ESession({
   type OutboundSession = InstanceType<OlmNamespace['OutboundGroupSession']>;
   type InboundSession = InstanceType<OlmNamespace['InboundGroupSession']>;
   type PkDecryptionObj = InstanceType<OlmNamespace['PkDecryption']>;
-
+  
   const outboundRef = useRef<OutboundSession | null>(null);
   const inboundByUserIdRef = useRef<Record<string, InboundSession[]>>({});
   const pkDecRef = useRef<PkDecryptionObj | null>(null);
@@ -67,6 +67,7 @@ export function useE2ESession({
   const unsubEncryptedKeysRef = useRef<(() => void) | null>(null);
   const prevParticipantCountRef = useRef<number>(0);
   const publicKeysRef = useRef<Record<string, string>>({});
+  const isRefreshRef = useRef<boolean>(false); // Track if this is a refresh (pkDec loaded from storage)
 
   /**
    * The exported session key of the current outbound session.
@@ -121,47 +122,152 @@ export function useE2ESession({
       return;
     }
 
+    // Check if this is a refresh (pkDec exists in storage) BEFORE setup() runs
+    // This ensures isRefreshRef is set before any callbacks execute
+    // Note: We use sessionId-only keys now (not userId+sessionId) because userId changes on refresh
+    const checkRefresh = async () => {
+      try {
+        const Olm = await getOlm();
+        // Pass empty string for userId since keys are now sessionId-only
+        const pkDecResult = PkEncryption.loadPkDecryptionFromStorage(Olm, '', sessionId);
+        isRefreshRef.current = !!pkDecResult;
+        console.log('[E2E] checkRefresh: isRefreshRef.current =', isRefreshRef.current);
+      } catch (err) {
+        console.warn('[E2E] checkRefresh error:', err);
+        isRefreshRef.current = false;
+      }
+    };
+    checkRefresh();
+
     let cancelled = false;
     let retryCount = 0;
 
     function doSubscribeEncryptedKeys() {
       if (!authUserId) return;
-
+      
       unsubEncryptedKeysRef.current = subscribeMyEncryptedKeys(
         firestore!,
         sessionId,
         authUserId,
         async (encryptedKeys) => {
-          const pkDec = pkDecRef.current;
-          if (cancelled || !pkDec) return;
-
+          // Wait for pkDec to be loaded (may not be ready on first snapshot after refresh)
+          let pkDec = pkDecRef.current;
+          let retries = 0;
+          while (!pkDec && retries < 10) {
+            // Retry with exponential backoff — setup() may still be running
+            await new Promise((r) => setTimeout(r, 50 * (retries + 1)));
+            pkDec = pkDecRef.current;
+            retries++;
+          }
+          if (cancelled || !pkDec) {
+            console.warn('[E2E] doSubscribeEncryptedKeys: pkDec not available, cancelled:', cancelled);
+            return;
+          }
+          
+          // Rebuild ALL inbound sessions from ALL encrypted keys in the snapshot.
+          // This ensures refresh/reconnect scenarios work correctly — we process
+          // every key that Firestore sends us, not just new ones.
           const next: Record<string, InboundSession[]> = {};
           let changed = false;
-
+          
+          // On refresh (pkDec loaded from storage), ignore joinedAtMs filter — user was already in room.
+          // Only apply filter for new joiners (fresh PkDecryption keypair).
+          // Check isRefreshRef AFTER waiting for pkDec to ensure it's set.
+          // Also check if pkDec was loaded from storage (more reliable than isRefreshRef which may be set async)
+          // Note: We use sessionId-only keys now (not userId+sessionId) because userId changes on refresh
+          const isRefresh = isRefreshRef.current || !!PkEncryption.loadPkDecryptionFromStorage(olmRef.current!, '', sessionId);
+          const shouldFilterByJoinedAt = !isRefresh && joinedAtMs != null;
+          
+          console.log('[E2E] doSubscribeEncryptedKeys:', {
+            encryptedKeysCount: encryptedKeys.length,
+            isRefresh,
+            shouldFilterByJoinedAt,
+            joinedAtMs,
+            pkDecAvailable: !!pkDec
+          });
+          
+          let filteredCount = 0;
+          let successCount = 0;
+          let errorCount = 0;
+          
           for (const { senderUserId, encryptedKey, createdAt } of encryptedKeys) {
-            if (joinedAtMs != null && createdAt < joinedAtMs) continue;
-
+            if (shouldFilterByJoinedAt && createdAt < joinedAtMs) {
+              filteredCount++;
+              continue;
+            }
+            
             try {
               const decryptedKey = PkEncryption.decryptForSelf(pkDec, encryptedKey);
               const session = Inbound.createInboundGroupSession(olmRef.current!, decryptedKey);
               if (!next[senderUserId]) next[senderUserId] = [];
               next[senderUserId].push(session);
               changed = true;
-            } catch {
+              successCount++;
+            } catch (err) {
+              errorCount++;
+              console.warn('[E2E] Failed to decrypt key for', senderUserId, ':', err);
               // ignore: key may belong to a different PkDecryption keypair (e.g. after re-join)
+              // This is expected if the user refreshed and got a new PkDecryption keypair.
             }
           }
-
-          if (changed) {
-            // Preserve self-inbound when merging.
-            inboundByUserIdRef.current = {
-              ...inboundByUserIdRef.current,
-              ...next,
-            };
-            if (!cancelled) {
-              setIsReady(true);
-              setError(null);
+          
+          console.log('[E2E] doSubscribeEncryptedKeys result:', {
+            filteredCount,
+            successCount,
+            errorCount,
+            sessionsCreated: Object.keys(next).length,
+            senderUserIds: Object.keys(next),
+            existingSelfInbound: !!inboundByUserIdRef.current[authUserId!]
+          });
+          
+          // Always update inboundByUserIdRef, even if no new sessions were created.
+          // This ensures that on refresh, we rebuild the session map from Firestore snapshot.
+          // Preserve self-inbound (it's not in encryptedKeys snapshot).
+          const selfInbound = inboundByUserIdRef.current[authUserId!];
+          console.log('[E2E] doSubscribeEncryptedKeys: Before update - selfInbound exists:', !!selfInbound, 'currentOutboundKeyRef:', !!currentOutboundKeyRef.current, 'outboundRef:', !!outboundRef.current);
+          
+          inboundByUserIdRef.current = next;
+          
+          // Always ensure self-inbound exists (for decrypting our own messages)
+          // Priority: 1) existing selfInbound, 2) currentOutboundKeyRef, 3) outboundRef
+          let finalSelfInbound = selfInbound && selfInbound.length > 0 ? selfInbound : null;
+          
+          if (!finalSelfInbound) {
+            // Self-inbound should have been set in setup(), but guard against edge cases.
+            // Also recreate it if currentOutboundKeyRef is available (refresh scenario).
+            try {
+              const selfKey = currentOutboundKeyRef.current;
+              if (selfKey && olmRef.current) {
+                console.log('[E2E] doSubscribeEncryptedKeys: Creating self-inbound from currentOutboundKeyRef, key length:', selfKey.length);
+                const selfSession = Inbound.createInboundGroupSession(olmRef.current, selfKey);
+                finalSelfInbound = [selfSession];
+              } else if (outboundRef.current && olmRef.current) {
+                // Fallback: use outboundRef directly
+                console.log('[E2E] doSubscribeEncryptedKeys: Creating self-inbound from outboundRef');
+                const fallbackKey = Outbound.exportSessionKey(outboundRef.current);
+                const selfSession = Inbound.createInboundGroupSession(olmRef.current, fallbackKey);
+                finalSelfInbound = [selfSession];
+                // Also update currentOutboundKeyRef for consistency
+                currentOutboundKeyRef.current = fallbackKey;
+              } else {
+                console.warn('[E2E] doSubscribeEncryptedKeys: No self-inbound and no outbound available');
+              }
+            } catch (err) {
+              console.warn('[E2E] doSubscribeEncryptedKeys: Failed to create self-inbound:', err);
             }
+          } else {
+            console.log('[E2E] doSubscribeEncryptedKeys: Using existing self-inbound');
+          }
+          
+          if (finalSelfInbound) {
+            inboundByUserIdRef.current[authUserId!] = finalSelfInbound;
+            console.log('[E2E] doSubscribeEncryptedKeys: Final state - self-inbound set, total sessions:', Object.keys(inboundByUserIdRef.current).length);
+          } else {
+            console.error('[E2E] doSubscribeEncryptedKeys: CRITICAL - No self-inbound after all attempts!');
+          }
+          if (!cancelled) {
+            setIsReady(true);
+            setError(null);
           }
         },
         (err) => {
@@ -183,7 +289,7 @@ export function useE2ESession({
         }
       );
     }
-
+    
     /**
      * Subscribe to participants' public keys.
      *
@@ -232,7 +338,7 @@ export function useE2ESession({
         }
       );
     }
-
+    
     /** Backward-compat: read plaintext keys written by older clients. */
     function doSubscribeLegacyKeys() {
       unsubRef.current = subscribeParticipantKeys(
@@ -245,7 +351,9 @@ export function useE2ESession({
           let changed = false;
           for (const [uid, keyEntries] of Object.entries(keysMap)) {
             for (const keyData of keyEntries) {
-              if (joinedAtMs != null && keyData.createdAt < joinedAtMs) continue;
+              // On refresh (pkDec loaded from storage), ignore joinedAtMs filter — user was already in room.
+              // Only apply filter for new joiners (fresh PkDecryption keypair).
+              if (!isRefreshRef.current && joinedAtMs != null && keyData.createdAt < joinedAtMs) continue;
               try {
                 const session = Inbound.createInboundGroupSession(OlmRef, keyData.key);
                 if (!next[uid]) next[uid] = [];
@@ -294,6 +402,9 @@ export function useE2ESession({
           pkDecResult = PkEncryption.createPkDecryption(Olm);
           PkEncryption.savePkDecryptionToStorage(pkDecResult.pkDec, pkDecResult.publicKey, authUserId!, sessionId);
           await savePublicKey(firestore!, sessionId, authUserId!, pkDecResult.publicKey);
+          isRefreshRef.current = false; // New keypair = new join
+        } else {
+          isRefreshRef.current = true; // Loaded from storage = refresh
         }
         pkDecRef.current = pkDecResult.pkDec;
 
@@ -307,7 +418,7 @@ export function useE2ESession({
           Outbound.saveOutboundToStorage(outbound, authUserId!, sessionId);
           const exported = Outbound.exportSessionKey(outbound);
           currentOutboundKeyRef.current = exported;
-
+          
           const publicKeys = publicKeysRef.current;
           if (Object.keys(publicKeys).length > 0) {
             await distributeOutboundKey(Olm, exported, publicKeys);
@@ -325,21 +436,38 @@ export function useE2ESession({
         outboundRef.current = outbound;
 
         // ── Self-inbound: decrypt our own sent messages ──────────────────────
+        // Always create self-inbound from current outbound key so we can decrypt our own messages.
         try {
           const selfKey = currentOutboundKeyRef.current ?? Outbound.exportSessionKey(outbound);
           const selfSession = Inbound.createInboundGroupSession(Olm, selfKey);
           inboundByUserIdRef.current[authUserId!] = [selfSession];
-        } catch {
+          console.log('[E2E] setup: Created self-inbound session for', authUserId);
+        } catch (err) {
+          console.warn('[E2E] setup: Failed to create self-inbound:', err);
           // ignore — non-fatal
         }
 
         await new Promise((r) => setTimeout(r, E2E_SUBSCRIBE_DELAY_MS));
         if (cancelled) return;
-
+        
+        // Ensure isRefreshRef is set before starting subscriptions
+        // (checkRefresh() may not have completed yet)
+        // Note: We use sessionId-only keys now (not userId+sessionId) because userId changes on refresh
+        const finalPkDecResult = PkEncryption.loadPkDecryptionFromStorage(Olm, '', sessionId);
+        if (finalPkDecResult) {
+          isRefreshRef.current = true;
+          console.log('[E2E] setup: Final check - isRefreshRef.current = true');
+        }
+        
+        // Start subscriptions — these will populate inboundByUserIdRef as snapshots arrive.
         doSubscribeEncryptedKeys();
         doSubscribeLegacyKeys();
 
-        if (!cancelled) {
+        // Note: isReady will be set to true by the subscription callbacks once they
+        // receive data and create inbound sessions. We don't set it here because
+        // on refresh, we need to wait for Firestore snapshots to arrive.
+        // However, if we already have self-inbound, we can mark ready immediately.
+        if (inboundByUserIdRef.current[authUserId!]) {
           setIsReady(true);
           setError(null);
         }
@@ -385,11 +513,12 @@ export function useE2ESession({
       Outbound.saveOutboundToStorage(newOutbound, authUserId!, sessionId);
       outboundRef.current = newOutbound;
       const exported = Outbound.exportSessionKey(newOutbound);
-
+      
       // Reset tracking for the new key.
       currentOutboundKeyRef.current = exported;
       sentOutboundKeyToRef.current = new Set();
 
+      // Distribute to current publicKeys (may be incomplete if new joiner's key hasn't arrived yet).
       await distributeOutboundKey(Olm, exported, publicKeysRef.current);
 
       // Update self-inbound so our own rotated messages are visible.
@@ -399,6 +528,25 @@ export function useE2ESession({
       } catch {
         // ignore
       }
+
+      // Retry mechanism: wait a bit for publicKeys snapshot to update, then check again.
+      // This handles the race where the new joiner's public key arrives AFTER rotation.
+      setTimeout(() => {
+        const currentKey = currentOutboundKeyRef.current;
+        if (currentKey === exported && Olm) {
+          // Still the same key (no new rotation happened) — check for late-arriving public keys.
+          const lateJoinerKeys: Record<string, string> = {};
+          for (const [uid, pubKey] of Object.entries(publicKeysRef.current)) {
+            if (uid !== authUserId && !sentOutboundKeyToRef.current.has(uid)) {
+              lateJoinerKeys[uid] = pubKey;
+            }
+          }
+          if (Object.keys(lateJoinerKeys).length > 0) {
+            distributeOutboundKey(Olm, exported, lateJoinerKeys).catch(() => {});
+          }
+        }
+      }, 1000); // 1 second delay — enough for Firestore snapshot to propagate
+
       // NOTE: plaintext key is intentionally NOT written to Firestore.
     })().catch(() => {});
   }, [enabled, firestore, sessionId, authUserId, participantCount]);

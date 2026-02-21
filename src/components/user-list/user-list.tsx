@@ -44,20 +44,12 @@ export function UserList({ users, currentUser }: UserListProps) {
                       userIsDeafened && "ring-2 ring-orange-500 ring-offset-2 ring-offset-background"
                     )}
                   />
-                  <span className={cn(
-                    "absolute bottom-0 right-0 block h-3 w-3 rounded-full border-2 border-card transition-all duration-200",
-                    isSpeaking && !userIsMuted && !userIsDeafened ? "bg-green-500 animate-pulse" :
-                    userIsMuted ? "bg-red-500" :
-                    userIsDeafened ? "bg-orange-500" :
-                    "bg-green-500"
-                  )} />
                 </div>
                 <span className="font-medium text-sm truncate flex-1">
                   {user.name} {isCurrentUser ? '(You)' : ''}
                 </span>
                 {isSpeaking && !userIsMuted && !userIsDeafened && (
-                  <div className="ml-auto flex items-center gap-1">
-                    <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
+                  <div className="ml-auto">
                     <span className="text-xs text-muted-foreground">Speaking</span>
                   </div>
                 )}
