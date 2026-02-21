@@ -14,6 +14,8 @@ export interface User {
   encryptedName?: string;
   /** AES-256-GCM encrypted avatar seed (set when E2E is enabled). */
   encryptedAvatarSeed?: string;
+  /** Updated every 15s; used to detect and clean up stale/crashed clients. */
+  lastSeen?: Timestamp;
 }
 
 export interface SubSession {
