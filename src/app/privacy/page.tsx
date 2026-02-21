@@ -22,7 +22,7 @@ export default function PrivacyPage() {
 
           <section>
             <h2>1. Data Controller</h2>
-            <p>Vortex is operated by Ege Durmaz (&quot;we&quot;, &quot;us&quot;). For data protection inquiries, contact <a href="mailto:abuse@vortex-rooms.com" className="text-primary hover:underline">abuse@vortex-rooms.com</a>.</p>
+            <p>Vortex is operated by Ege Durmaz (&quot;we&quot;, &quot;us&quot;). For data protection inquiries, contact <a href="mailto:abuse.vortex.rooms@gmail.com" className="text-primary hover:underline">abuse.vortex.rooms@gmail.com</a>.</p>
           </section>
 
           <section>
@@ -106,7 +106,7 @@ export default function PrivacyPage() {
               <li>Object to automated processing that produces adverse results.</li>
               <li>Claim compensation for damages arising from unlawful processing.</li>
             </ul>
-            <p className="mt-3">Due to the ephemeral and anonymous nature of Vortex, most user data is automatically deleted when you leave a room. For any data rights requests, contact <a href="mailto:abuse@vortex-rooms.com" className="text-primary hover:underline">abuse@vortex-rooms.com</a>.</p>
+            <p className="mt-3">Due to the ephemeral and anonymous nature of Vortex, most user data is automatically deleted when you leave a room. For any data rights requests, contact <a href="mailto:abuse.vortex.rooms@gmail.com" className="text-primary hover:underline">abuse.vortex.rooms@gmail.com</a>.</p>
           </section>
 
           <section>
@@ -123,7 +123,7 @@ export default function PrivacyPage() {
             <h2>11. Contact</h2>
             <p>For privacy inquiries or data rights requests:</p>
             <ul className="list-disc pl-6 space-y-1.5 mt-2">
-              <li>Email: <a href="mailto:abuse@vortex-rooms.com" className="text-primary hover:underline">abuse@vortex-rooms.com</a></li>
+              <li>Email: <a href="mailto:abuse.vortex.rooms@gmail.com" className="text-primary hover:underline">abuse.vortex.rooms@gmail.com</a></li>
               <li>GitHub: <a href="https://github.com/Aegean09/vortex-rooms" className="text-primary hover:underline" target="_blank" rel="noopener noreferrer">github.com/Aegean09/vortex-rooms</a></li>
             </ul>
           </section>

@@ -33,7 +33,7 @@ export function ChatArea({ messages, onSendMessage, channelName, canSendMessage 
       `Content: ${message.text}\n\n` +
       `Describe the issue:\n`
     );
-    window.open(`mailto:abuse@vortex-rooms.com?subject=${subject}&body=${body}`, '_blank');
+    window.open(`mailto:abuse.vortex.rooms@gmail.com?subject=${subject}&body=${body}`, '_blank');
     toast({ title: 'Report', description: 'Email client opened. Please describe the issue and send.' });
   };
 

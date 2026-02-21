@@ -61,7 +61,7 @@ export default function TermsPage() {
 
           <section>
             <h2>6. Reporting and Enforcement</h2>
-            <p>If you encounter illegal content or behavior, you must report it using the in-app report feature or by emailing <a href="mailto:abuse@vortex-rooms.com" className="text-primary hover:underline">abuse@vortex-rooms.com</a>. We reserve the right to:</p>
+            <p>If you encounter illegal content or behavior, you must report it using the in-app report feature or by emailing <a href="mailto:abuse.vortex.rooms@gmail.com" className="text-primary hover:underline">abuse.vortex.rooms@gmail.com</a>. We reserve the right to:</p>
             <ul className="list-disc pl-6 space-y-1.5 mt-2">
               <li>Remove any content or terminate any session that violates these Terms.</li>
               <li>Report illegal activity to relevant law enforcement authorities.</li>
@@ -94,7 +94,7 @@ export default function TermsPage() {
             <h2>11. Contact</h2>
             <p>For questions about these Terms or to report abuse:</p>
             <ul className="list-disc pl-6 space-y-1.5 mt-2">
-              <li>Email: <a href="mailto:abuse@vortex-rooms.com" className="text-primary hover:underline">abuse@vortex-rooms.com</a></li>
+              <li>Email: <a href="mailto:abuse.vortex.rooms@gmail.com" className="text-primary hover:underline">abuse.vortex.rooms@gmail.com</a></li>
               <li>GitHub: <a href="https://github.com/Aegean09/vortex-rooms" className="text-primary hover:underline" target="_blank" rel="noopener noreferrer">github.com/Aegean09/vortex-rooms</a></li>
             </ul>
           </section>

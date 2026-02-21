@@ -79,7 +79,7 @@ export default function HomePage() {
           <span>·</span>
           <a href="/privacy" className="hover:text-foreground transition-colors">Privacy</a>
           <span>·</span>
-          <a href="mailto:abuse@vortex-rooms.com" className="hover:text-foreground transition-colors">Report Abuse</a>
+          <a href="mailto:abuse.vortex.rooms@gmail.com" className="hover:text-foreground transition-colors">Report Abuse</a>
         </div>
         <p className="mt-2 text-center text-xs text-muted-foreground">© 2026 Ege Durmaz. All rights reserved.</p>
       </footer>
