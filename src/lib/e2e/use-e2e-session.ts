@@ -23,6 +23,7 @@ import {
   subscribeMyEncryptedKeys,
 } from './key-storage';
 import * as PkEncryption from './olm-pk-encryption';
+import * as MetadataCrypto from './metadata-crypto';
 import type { OlmNamespace } from './types';
 
 export interface UseE2ESessionResult {
@@ -30,6 +31,8 @@ export interface UseE2ESessionResult {
   decrypt: (ciphertext: string, senderUserId: string) => Promise<string | null>;
   isReady: boolean;
   error: string | null;
+  /** Room-level AES key for encrypting/decrypting user metadata (names, avatars). */
+  metadataKey: string | null;
 }
 
 export interface UseE2ESessionParams {
@@ -53,6 +56,7 @@ export function useE2ESession({
 }: UseE2ESessionParams): UseE2ESessionResult {
   const [isReady, setIsReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [metadataKey, setMetadataKey] = useState<string | null>(null);
 
   type OutboundSession = InstanceType<OlmNamespace['OutboundGroupSession']>;
   type InboundSession = InstanceType<OlmNamespace['InboundGroupSession']>;
@@ -67,7 +71,10 @@ export function useE2ESession({
   const unsubEncryptedKeysRef = useRef<(() => void) | null>(null);
   const prevParticipantCountRef = useRef<number>(0);
   const publicKeysRef = useRef<Record<string, string>>({});
-  const isRefreshRef = useRef<boolean>(false); // Track if this is a refresh (pkDec loaded from storage)
+  const metadataKeyRef = useRef<string | null>(null);
+  /** True when the metadataKey was generated locally (not received from another user or loaded from storage). */
+  const metadataKeyIsLocalRef = useRef(false);
+  const isRefreshRef = useRef<boolean>(false);
 
   /**
    * The exported session key of the current outbound session.
@@ -109,10 +116,13 @@ export function useE2ESession({
 
     if (recipientPublicKeys.length === 0) return;
 
-    const encryptedKeys = PkEncryption.encryptForMultipleRecipients(Olm, exported, recipientPublicKeys);
+    const payload = metadataKeyRef.current
+      ? JSON.stringify({ megolmKey: exported, metadataKey: metadataKeyRef.current })
+      : exported;
+
+    const encryptedKeys = PkEncryption.encryptForMultipleRecipients(Olm, payload, recipientPublicKeys);
     await saveEncryptedParticipantKey(firestore, sessionId, authUserId, encryptedKeys);
 
-    // Mark these users as having received the current outbound key.
     recipientPublicKeys.forEach(({ userId }) => sentOutboundKeyToRef.current.add(userId));
   }
 
@@ -197,8 +207,30 @@ export function useE2ESession({
             }
             
             try {
-              const decryptedKey = PkEncryption.decryptForSelf(pkDec, encryptedKey);
-              const session = Inbound.createInboundGroupSession(olmRef.current!, decryptedKey);
+              const decryptedPayload = PkEncryption.decryptForSelf(pkDec, encryptedKey);
+
+              let megolmKey: string;
+              try {
+                const parsed = JSON.parse(decryptedPayload);
+                if (parsed && typeof parsed.megolmKey === 'string') {
+                  megolmKey = parsed.megolmKey;
+                  if (
+                    typeof parsed.metadataKey === 'string' &&
+                    (!metadataKeyRef.current || metadataKeyIsLocalRef.current)
+                  ) {
+                    metadataKeyRef.current = parsed.metadataKey;
+                    metadataKeyIsLocalRef.current = false;
+                    MetadataCrypto.saveMetadataKeyToStorage(sessionId, parsed.metadataKey);
+                    setMetadataKey(parsed.metadataKey);
+                  }
+                } else {
+                  megolmKey = decryptedPayload;
+                }
+              } catch {
+                megolmKey = decryptedPayload;
+              }
+
+              const session = Inbound.createInboundGroupSession(olmRef.current!, megolmKey);
               if (!next[senderUserId]) next[senderUserId] = [];
               next[senderUserId].push(session);
               changed = true;
@@ -206,8 +238,6 @@ export function useE2ESession({
             } catch (err) {
               errorCount++;
               console.warn('[E2E] Failed to decrypt key for', senderUserId, ':', err);
-              // ignore: key may belong to a different PkDecryption keypair (e.g. after re-join)
-              // This is expected if the user refreshed and got a new PkDecryption keypair.
             }
           }
           
@@ -233,30 +263,19 @@ export function useE2ESession({
           let finalSelfInbound = selfInbound && selfInbound.length > 0 ? selfInbound : null;
           
           if (!finalSelfInbound) {
-            // Self-inbound should have been set in setup(), but guard against edge cases.
-            // Also recreate it if currentOutboundKeyRef is available (refresh scenario).
-            try {
-              const selfKey = currentOutboundKeyRef.current;
-              if (selfKey && olmRef.current) {
-                console.log('[E2E] doSubscribeEncryptedKeys: Creating self-inbound from currentOutboundKeyRef, key length:', selfKey.length);
-                const selfSession = Inbound.createInboundGroupSession(olmRef.current, selfKey);
-                finalSelfInbound = [selfSession];
-              } else if (outboundRef.current && olmRef.current) {
-                // Fallback: use outboundRef directly
-                console.log('[E2E] doSubscribeEncryptedKeys: Creating self-inbound from outboundRef');
-                const fallbackKey = Outbound.exportSessionKey(outboundRef.current);
-                const selfSession = Inbound.createInboundGroupSession(olmRef.current, fallbackKey);
-                finalSelfInbound = [selfSession];
-                // Also update currentOutboundKeyRef for consistency
-                currentOutboundKeyRef.current = fallbackKey;
-              } else {
-                console.warn('[E2E] doSubscribeEncryptedKeys: No self-inbound and no outbound available');
+            // Rebuild from ALL initial keys (index 0) so every outbound's messages are decryptable.
+            const initialKeys = Outbound.loadInitialKeysFromStorage(sessionId);
+            const selfSessions: InboundSession[] = [];
+            for (const key of initialKeys) {
+              try {
+                if (olmRef.current) selfSessions.push(Inbound.createInboundGroupSession(olmRef.current, key));
+              } catch {
+                // ignore invalid key
               }
-            } catch (err) {
-              console.warn('[E2E] doSubscribeEncryptedKeys: Failed to create self-inbound:', err);
             }
-          } else {
-            console.log('[E2E] doSubscribeEncryptedKeys: Using existing self-inbound');
+            if (selfSessions.length > 0) {
+              finalSelfInbound = selfSessions;
+            }
           }
           
           if (finalSelfInbound) {
@@ -265,6 +284,20 @@ export function useE2ESession({
           } else {
             console.error('[E2E] doSubscribeEncryptedKeys: CRITICAL - No self-inbound after all attempts!');
           }
+          // Generate metadataKey if we still don't have one and we're the sole participant.
+          if (!metadataKeyRef.current) {
+            const otherPks = Object.keys(publicKeysRef.current).filter(
+              (uid) => uid !== authUserId,
+            );
+            if (otherPks.length === 0) {
+              const fresh = MetadataCrypto.generateMetadataKey();
+              metadataKeyRef.current = fresh;
+              metadataKeyIsLocalRef.current = true;
+              MetadataCrypto.saveMetadataKeyToStorage(sessionId, fresh);
+              if (!cancelled) setMetadataKey(fresh);
+            }
+          }
+
           if (!cancelled) {
             setIsReady(true);
             setError(null);
@@ -411,6 +444,18 @@ export function useE2ESession({
         // ── Public key subscription (before outbound, to reduce race window) ─
         doSubscribePublicKeys();
 
+        // ── Room metadata key (AES-256-GCM for name/avatar encryption) ─────
+        // Only load from storage here. Generation happens in doSubscribeEncryptedKeys
+        // once we know whether we're the first participant or should receive the key.
+        {
+          const stored = MetadataCrypto.loadMetadataKeyFromStorage(sessionId);
+          if (stored) {
+            metadataKeyRef.current = stored;
+            metadataKeyIsLocalRef.current = false;
+            setMetadataKey(stored);
+          }
+        }
+
         // ── Outbound Megolm session ──────────────────────────────────────────
         let outbound: OutboundSession | null = Outbound.loadOutboundFromStorage(Olm, authUserId!, sessionId);
         if (!outbound) {
@@ -418,33 +463,36 @@ export function useE2ESession({
           Outbound.saveOutboundToStorage(outbound, authUserId!, sessionId);
           const exported = Outbound.exportSessionKey(outbound);
           currentOutboundKeyRef.current = exported;
+          Outbound.saveInitialKeyToStorage(sessionId, exported);
           
           const publicKeys = publicKeysRef.current;
           if (Object.keys(publicKeys).length > 0) {
             await distributeOutboundKey(Olm, exported, publicKeys);
           } else {
-            // Snapshot not yet arrived — flush in doSubscribePublicKeys when it does.
             pendingOutboundKeyRef.current = exported;
           }
         } else {
-          // Loaded from storage: treat all participants as "not yet sent to" so
-          // doSubscribePublicKeys resends to everyone (safe: Firestore deduplicates on read).
           const exported = Outbound.exportSessionKey(outbound);
           currentOutboundKeyRef.current = exported;
-          // sentOutboundKeyToRef is already empty (fresh Set) — no extra work needed.
         }
         outboundRef.current = outbound;
 
         // ── Self-inbound: decrypt our own sent messages ──────────────────────
-        // Always create self-inbound from current outbound key so we can decrypt our own messages.
-        try {
-          const selfKey = currentOutboundKeyRef.current ?? Outbound.exportSessionKey(outbound);
-          const selfSession = Inbound.createInboundGroupSession(Olm, selfKey);
-          inboundByUserIdRef.current[authUserId!] = [selfSession];
-          console.log('[E2E] setup: Created self-inbound session for', authUserId);
-        } catch (err) {
-          console.warn('[E2E] setup: Failed to create self-inbound:', err);
-          // ignore — non-fatal
+        // Use ALL initial keys (index 0) saved across refreshes/rotations so that
+        // messages from every outbound session are decryptable, not just the latest.
+        {
+          const initialKeys = Outbound.loadInitialKeysFromStorage(sessionId);
+          const selfSessions: InboundSession[] = [];
+          for (const key of initialKeys) {
+            try {
+              selfSessions.push(Inbound.createInboundGroupSession(Olm, key));
+            } catch {
+              // ignore invalid key
+            }
+          }
+          if (selfSessions.length > 0) {
+            inboundByUserIdRef.current[authUserId!] = selfSessions;
+          }
         }
 
         await new Promise((r) => setTimeout(r, E2E_SUBSCRIBE_DELAY_MS));
@@ -487,6 +535,8 @@ export function useE2ESession({
       pendingOutboundKeyRef.current = null;
       currentOutboundKeyRef.current = null;
       sentOutboundKeyToRef.current = new Set();
+      metadataKeyRef.current = null;
+      metadataKeyIsLocalRef.current = false;
       inboundByUserIdRef.current = {};
       unsubRef.current?.();
       unsubRef.current = null;
@@ -513,6 +563,7 @@ export function useE2ESession({
       Outbound.saveOutboundToStorage(newOutbound, authUserId!, sessionId);
       outboundRef.current = newOutbound;
       const exported = Outbound.exportSessionKey(newOutbound);
+      Outbound.saveInitialKeyToStorage(sessionId, exported);
       
       // Reset tracking for the new key.
       currentOutboundKeyRef.current = exported;
@@ -521,10 +572,11 @@ export function useE2ESession({
       // Distribute to current publicKeys (may be incomplete if new joiner's key hasn't arrived yet).
       await distributeOutboundKey(Olm, exported, publicKeysRef.current);
 
-      // Update self-inbound so our own rotated messages are visible.
+      // Append new self-inbound (keep old ones so previous messages stay decryptable).
       try {
         const selfSession = Inbound.createInboundGroupSession(Olm, exported);
-        inboundByUserIdRef.current[authUserId!] = [selfSession];
+        const existing = inboundByUserIdRef.current[authUserId!] || [];
+        inboundByUserIdRef.current[authUserId!] = [...existing, selfSession];
       } catch {
         // ignore
       }
@@ -581,5 +633,5 @@ export function useE2ESession({
     [isReady]
   );
 
-  return { encrypt, decrypt, isReady, error };
+  return { encrypt, decrypt, isReady, error, metadataKey };
 }

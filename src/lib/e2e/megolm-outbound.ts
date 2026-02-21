@@ -18,8 +18,9 @@ type OutboundSession = InstanceType<OlmNamespace['OutboundGroupSession']>;
 
 // localStorage key builders — scoped to sessionId only (userId changes on refresh with Anonymous Auth).
 // This allows keys to persist across refreshes even if Firebase Anonymous Auth creates a new user.
-const outboundKey    = (sessionId: string) => `vortex-e2e-outbound-${sessionId}`;
-const outboundPickle = (sessionId: string) => `vortex-e2e-outbound-key-${sessionId}`;
+const outboundKey       = (sessionId: string) => `vortex-e2e-outbound-${sessionId}`;
+const outboundPickle    = (sessionId: string) => `vortex-e2e-outbound-key-${sessionId}`;
+const initialKeysKey    = (sessionId: string) => `vortex-e2e-initial-keys-${sessionId}`;
 
 /** Generate a cryptographically random base64 string (32 bytes). */
 function generateRandomKey(): string {
@@ -128,7 +129,41 @@ export function loadOutboundFromStorage(
 }
 
 /**
- * Remove outbound session keys from localStorage.
+ * Save the initial session key (at ratchet index 0) so that self-inbound can always
+ * decrypt messages from this outbound, even after refresh when the outbound ratchet
+ * has advanced. Appends to an array (one entry per outbound session / rotation).
+ */
+export function saveInitialKeyToStorage(sessionId: string, key: string): void {
+  if (!isSessionStorageAvailable()) return;
+  try {
+    const storageKey = initialKeysKey(sessionId);
+    const existing = sessionStorage.getItem(storageKey);
+    const keys: string[] = existing ? JSON.parse(existing) : [];
+    keys.push(key);
+    sessionStorage.setItem(storageKey, JSON.stringify(keys));
+  } catch {
+    // ignore
+  }
+}
+
+/**
+ * Load all initial session keys (index 0) for this room.
+ * Used to create self-inbound sessions that can decrypt ALL own messages,
+ * including those sent before refreshes and key rotations.
+ */
+export function loadInitialKeysFromStorage(sessionId: string): string[] {
+  if (!isSessionStorageAvailable()) return [];
+  try {
+    const storageKey = initialKeysKey(sessionId);
+    const existing = sessionStorage.getItem(storageKey);
+    return existing ? JSON.parse(existing) : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Remove outbound session keys and room metadata key from sessionStorage.
  * Call this on explicit session leave or user logout.
  */
 export function clearOutboundFromStorage(userId: string, sessionId: string): void {
@@ -136,6 +171,8 @@ export function clearOutboundFromStorage(userId: string, sessionId: string): voi
   try {
     sessionStorage.removeItem(outboundKey(sessionId));
     sessionStorage.removeItem(outboundPickle(sessionId));
+    sessionStorage.removeItem(initialKeysKey(sessionId));
+    sessionStorage.removeItem(`vortex-e2e-metadata-${sessionId}`);
   } catch {
     // ignore
   }

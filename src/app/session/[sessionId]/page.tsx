@@ -34,6 +34,7 @@ import {
 } from './hooks';
 import { useFirestore } from '@/firebase';
 import { useE2ESession } from '@/lib/e2e';
+import { encryptMetadata, decryptMetadata } from '@/lib/e2e/metadata-crypto';
 import { useToast } from '@/hooks/use-toast';
 
 const VoiceControls = dynamic(
@@ -52,21 +53,14 @@ export default function SessionPage() {
   const firestore = useFirestore();
   const { toast } = useToast();
 
-  const { hasJoined } = useSessionPresence({
-    firestore,
-    authUser,
-    sessionId,
-    username,
-    avatarStyle,
-    avatarSeed,
-  });
+  const [joined, setJoined] = useState(false);
 
   const {
     sessionRef,
     messagesRef,
     sessionData,
     isSessionLoading,
-    users,
+    users: rawUsers,
     usersLoading,
     messagesData,
     messagesLoading,
@@ -74,12 +68,25 @@ export default function SessionPage() {
     isSubSessionsLoading,
     textChannelsData,
     isTextChannelsLoading,
-    currentUser,
-    presenter,
+    currentUser: rawCurrentUser,
     isSomeoneScreenSharing,
-  } = useSessionData(sessionId, authUser, { skipParticipantCollections: !hasJoined });
+  } = useSessionData(sessionId, authUser, { skipParticipantCollections: !joined });
 
-  useJoinSound({ users, subSessionsData, currentUser });
+  const e2eEnabled = sessionData?.e2eEnabled === true;
+
+  const { hasJoined } = useSessionPresence({
+    firestore,
+    authUser,
+    sessionId,
+    username,
+    avatarStyle,
+    avatarSeed,
+    e2eEnabled,
+  });
+
+  useEffect(() => { setJoined(hasJoined); }, [hasJoined]);
+
+  useJoinSound({ users: rawUsers, subSessionsData, currentUser: rawCurrentUser });
 
   const { sortedSubSessions, handleSubSessionChange } = useSubSessionManager({
     firestore,
@@ -89,7 +96,7 @@ export default function SessionPage() {
     isSubSessionsLoading,
   });
 
-  const currentSubSessionId = currentUser?.subSessionId ?? 'general';
+  const currentSubSessionId = rawCurrentUser?.subSessionId ?? 'general';
 
   const {
     sortedTextChannels,
@@ -104,19 +111,18 @@ export default function SessionPage() {
   });
 
   const joinedAtMs = useMemo(() => {
-    const ja = currentUser?.joinedAt;
+    const ja = rawCurrentUser?.joinedAt;
     if (!ja) return null;
     return ja instanceof Timestamp ? ja.toMillis() : (ja as { toMillis?: () => number })?.toMillis?.() ?? null;
-  }, [currentUser?.joinedAt]);
+  }, [rawCurrentUser?.joinedAt]);
 
-  const e2eEnabled = sessionData?.e2eEnabled === true;
   const isCreator = sessionData?.createdBy === authUser?.uid;
   const e2e = useE2ESession({
     firestore,
     sessionId,
     authUserId: authUser?.uid ?? null,
     joinedAtMs,
-    participantCount: users?.length ?? 0,
+    participantCount: rawUsers?.length ?? 0,
     enabled: e2eEnabled && hasJoined,
   });
 
@@ -129,6 +135,60 @@ export default function SessionPage() {
       });
     }
   }, [e2eEnabled, e2e.error, toast]);
+
+  const e2eMetadataKey = e2e.metadataKey;
+
+  // Write encrypted name/avatar to Firestore once metadataKey is available.
+  // This also overwrites any brief plaintext that the presence hook may have written.
+  useEffect(() => {
+    if (!e2eEnabled || !e2eMetadataKey || !firestore || !authUser || !username) return;
+    const userDocRef = doc(firestore, 'sessions', sessionId, 'users', authUser.uid);
+    (async () => {
+      const encName = await encryptMetadata(e2eMetadataKey, username);
+      const encSeed = avatarSeed ? await encryptMetadata(e2eMetadataKey, avatarSeed) : null;
+      await updateDoc(userDocRef, {
+        name: 'Encrypted',
+        encryptedName: encName,
+        ...(encSeed ? { encryptedAvatarSeed: encSeed, avatarSeed: null } : {}),
+        ...(avatarStyle ? { avatarStyle: null } : {}),
+      });
+    })().catch(() => {});
+  }, [e2eEnabled, e2eMetadataKey, firestore, authUser, username, avatarSeed, avatarStyle, sessionId]);
+
+  // Decrypt user names/avatars client-side when metadataKey is available.
+  const [decryptedUsers, setDecryptedUsers] = useState<User[] | null>(null);
+
+  useEffect(() => {
+    if (!rawUsers) { setDecryptedUsers(null); return; }
+    if (!e2eMetadataKey) { setDecryptedUsers(rawUsers); return; }
+
+    let cancelled = false;
+    (async () => {
+      const resolved = await Promise.all(
+        rawUsers.map(async (u) => {
+          const name = u.encryptedName
+            ? (await decryptMetadata(e2eMetadataKey, u.encryptedName)) ?? u.name
+            : u.name;
+          const seed = u.encryptedAvatarSeed
+            ? (await decryptMetadata(e2eMetadataKey, u.encryptedAvatarSeed)) ?? u.avatarSeed
+            : u.avatarSeed;
+          return { ...u, name, avatarSeed: seed };
+        }),
+      );
+      if (!cancelled) setDecryptedUsers(resolved);
+    })();
+    return () => { cancelled = true; };
+  }, [rawUsers, e2eMetadataKey]);
+
+  const users = decryptedUsers;
+  const currentUser = useMemo(() => {
+    if (!authUser || !users) return null;
+    return users.find((u) => u.id === authUser.uid) || null;
+  }, [authUser, users]);
+  const presenter = useMemo(() => {
+    if (!currentUser || !users) return null;
+    return users.find((u) => u.isScreenSharing && u.subSessionId === currentUser.subSessionId) || null;
+  }, [users, currentUser]);
 
   const e2eHelpers = e2eEnabled
     ? { encrypt: e2e.encrypt, decrypt: e2e.decrypt, isReady: e2e.isReady }
@@ -178,9 +238,15 @@ export default function SessionPage() {
     sessionStorage.setItem(`vortex-avatar-seed-${sessionId}`, newSeed);
     if (firestore && authUser) {
       const userDocRef = doc(firestore, 'sessions', sessionId, 'users', authUser.uid);
-      updateDoc(userDocRef, { avatarSeed: newSeed }).catch(() => {});
+      if (e2eMetadataKey) {
+        encryptMetadata(e2eMetadataKey, newSeed)
+          .then((enc) => updateDoc(userDocRef, { encryptedAvatarSeed: enc, avatarSeed: null }))
+          .catch(() => {});
+      } else {
+        updateDoc(userDocRef, { avatarSeed: newSeed }).catch(() => {});
+      }
     }
-  }, [firestore, authUser, sessionId]);
+  }, [firestore, authUser, sessionId, e2eMetadataKey]);
 
   if (
     isUserLoading ||
