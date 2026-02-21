@@ -4,11 +4,5 @@
   },
   "functions": {
     "source": "cloud-jobs"
-  },
-  "apphosting": {
-    "backend": {
-      "id": "studio",
-      "location": "us-central1"
-    }
   }
 }
