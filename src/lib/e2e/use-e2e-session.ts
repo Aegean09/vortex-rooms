@@ -537,6 +537,7 @@ export function useE2ESession({
       sentOutboundKeyToRef.current = new Set();
       metadataKeyRef.current = null;
       metadataKeyIsLocalRef.current = false;
+      metadataKeyDistributedRef.current = false;
       inboundByUserIdRef.current = {};
       unsubRef.current?.();
       unsubRef.current = null;
@@ -602,6 +603,22 @@ export function useE2ESession({
       // NOTE: plaintext key is intentionally NOT written to Firestore.
     })().catch(() => {});
   }, [enabled, firestore, sessionId, authUserId, participantCount]);
+
+  // When metadataKey becomes available for the first time, re-distribute our
+  // outbound key so every participant receives the metadataKey in the payload.
+  // This fixes the race where key rotation fires before metadataKey is set.
+  const metadataKeyDistributedRef = useRef(false);
+  useEffect(() => {
+    if (!metadataKey || metadataKeyDistributedRef.current) return;
+    if (!enabled || !firestore || !sessionId || !authUserId || !olmRef.current) return;
+    const currentKey = currentOutboundKeyRef.current;
+    if (!currentKey) return;
+
+    metadataKeyDistributedRef.current = true;
+    const Olm = olmRef.current;
+    sentOutboundKeyToRef.current = new Set();
+    distributeOutboundKey(Olm, currentKey, publicKeysRef.current).catch(() => {});
+  }, [metadataKey, enabled, firestore, sessionId, authUserId]);
 
   const decrypt = useCallback(
     async (ciphertext: string, senderUserId: string): Promise<string | null> => {
