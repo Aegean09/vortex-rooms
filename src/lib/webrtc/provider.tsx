@@ -26,6 +26,13 @@ import {
 } from './helpers/audio-helpers';
 import { percentToRms } from '@/helpers/audio-helpers';
 
+export interface BandwidthStats {
+  totalBytesSent: number;
+  totalBytesReceived: number;
+  uploadRate: number;
+  downloadRate: number;
+}
+
 interface WebRTCContextType {
   localStream: MediaStream | null;
   rawStream: MediaStream | null;
@@ -48,10 +55,13 @@ interface WebRTCContextType {
   setNoiseSuppressionEnabled: (enabled: boolean) => void;
   noiseSuppressionIntensity: number;
   setNoiseSuppressionIntensity: (intensity: number) => void;
+  remoteVoiceActivity: Record<string, { isActive: boolean; level: number }>;
+  localVoiceActivity: boolean;
   audioInputDevices: MediaDeviceInfo[];
   selectedDeviceId: string;
   setSelectedDeviceId: (deviceId: string) => void;
   reconnectMicrophone: () => Promise<void>;
+  bandwidthStats: BandwidthStats;
 }
 
 const WebRTCContext = createContext<WebRTCContextType | undefined>(undefined);
@@ -117,6 +127,64 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
   });
 
   const localVoiceActivity = pushToTalk && !isPressingPushToTalkKey ? false : rawLocalVoiceActivity;
+
+  const [bandwidthStats, setBandwidthStats] = useState<BandwidthStats>({
+    totalBytesSent: 0,
+    totalBytesReceived: 0,
+    uploadRate: 0,
+    downloadRate: 0,
+  });
+  const prevBytesRef = useRef<{ sent: number; received: number; ts: number } | null>(null);
+
+  useEffect(() => {
+    const POLL_MS = 2000;
+    const interval = setInterval(async () => {
+      const pcs = Object.values(peerConnections.current);
+      if (pcs.length === 0) {
+        if (prevBytesRef.current) {
+          prevBytesRef.current = null;
+          setBandwidthStats({ totalBytesSent: 0, totalBytesReceived: 0, uploadRate: 0, downloadRate: 0 });
+        }
+        return;
+      }
+
+      let sent = 0;
+      let received = 0;
+
+      for (const pc of pcs) {
+        if (pc.connectionState === 'closed') continue;
+        try {
+          const stats = await pc.getStats();
+          stats.forEach((report) => {
+            if (report.type === 'transport') {
+              sent += report.bytesSent ?? 0;
+              received += report.bytesReceived ?? 0;
+            }
+          });
+        } catch {
+          // connection may have closed mid-call
+        }
+      }
+
+      const now = Date.now();
+      const prev = prevBytesRef.current;
+      let uploadRate = 0;
+      let downloadRate = 0;
+
+      if (prev) {
+        const dt = (now - prev.ts) / 1000;
+        if (dt > 0) {
+          uploadRate = Math.max(0, (sent - prev.sent) / dt);
+          downloadRate = Math.max(0, (received - prev.received) / dt);
+        }
+      }
+
+      prevBytesRef.current = { sent, received, ts: now };
+      setBandwidthStats({ totalBytesSent: sent, totalBytesReceived: received, uploadRate, downloadRate });
+    }, POLL_MS);
+
+    return () => clearInterval(interval);
+  }, []);
 
   const audioNodesRef = useRef<NoiseSuppressionNodes | null>(null);
   const noiseGateTimerRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
@@ -817,6 +885,7 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
       selectedDeviceId,
       setSelectedDeviceId,
       reconnectMicrophone,
+      bandwidthStats,
     }}>
       {children}
       {Object.entries(remoteStreams).map(([peerId, stream]) => (

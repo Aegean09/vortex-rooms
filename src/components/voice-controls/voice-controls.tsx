@@ -31,6 +31,7 @@ import {
 import { Slider } from '@/components/ui/slider';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { getKeyDisplayName, rmsToPercent, percentToRms } from '@/helpers/audio-helpers';
+import { BandwidthIndicator } from '@/components/bandwidth-indicator/bandwidth-indicator';
 
 interface VoiceControlsProps {
   currentUser: User | null;
@@ -60,6 +61,7 @@ export function VoiceControls({ currentUser, onAvatarChange }: VoiceControlsProp
     selectedDeviceId,
     setSelectedDeviceId,
     reconnectMicrophone,
+    bandwidthStats,
   } = useWebRTC();
   const [hasMicPermission, setHasMicPermission] = useState(false);
   const [voiceActivity, setVoiceActivity] = useState(false);
@@ -265,6 +267,7 @@ export function VoiceControls({ currentUser, onAvatarChange }: VoiceControlsProp
           )}
         </div>
         <div className="flex items-center gap-2">
+          <BandwidthIndicator stats={bandwidthStats} />
           <Tooltip>
             <TooltipTrigger asChild>
               <Button variant={isMuted ? 'destructive' : 'secondary'} size="icon" onClick={handleToggleMute} disabled={!localStream}>

@@ -4,7 +4,7 @@
   "version": "0.6.0",
   "identifier": "com.vortex.rooms",
   "build": {
-    "frontendDist": "https://studio--studio-538325307-b0443.us-central1.hosted.app",
+    "frontendDist": "https://vortex-rooms.com",
     "devUrl": "http://localhost:3000",
     "beforeDevCommand": "npm run dev",
     "beforeBuildCommand": ""
@@ -20,7 +20,8 @@
         "minHeight": 600,
         "resizable": true,
         "fullscreen": false,
-        "center": true
+        "center": true,
+        "skipTaskbar": true
       }
     ],
     "security": {
