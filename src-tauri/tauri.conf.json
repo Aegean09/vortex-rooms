@@ -4,7 +4,7 @@
   "version": "0.6.0",
   "identifier": "com.vortex.rooms",
   "build": {
-    "frontendDist": "https://studio--studio-538325307-b0443.us-central1.hosted.app",
+    "frontendDist": "https://vortex-rooms.com",
     "devUrl": "http://localhost:3000",
     "beforeDevCommand": "npm run dev",
     "beforeBuildCommand": ""
@@ -25,11 +25,6 @@
     ],
     "security": {
       "csp": null
-    },
-    "trayIcon": {
-      "iconPath": "icons/icon.png",
-      "iconAsTemplate": true,
-      "tooltip": "Vortex"
     }
   },
   "bundle": {

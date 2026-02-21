@@ -4,6 +4,13 @@ export interface PeerConnectionWithUnsubscribe extends RTCPeerConnection {
   unsubscribeCandidates?: Unsubscribe;
 }
 
+export interface BandwidthStats {
+  totalBytesSent: number;
+  totalBytesReceived: number;
+  uploadRate: number;
+  downloadRate: number;
+}
+
 export interface WebRTCContextType {
   localStream: MediaStream | null;
   rawStream: MediaStream | null;
@@ -24,6 +31,7 @@ export interface WebRTCContextType {
   setPushToTalkKey: (key: string) => void;
   remoteVoiceActivity: Record<string, { isActive: boolean; level: number }>;
   localVoiceActivity: boolean;
+  bandwidthStats: BandwidthStats;
 }
 
 export interface WebRTCProviderProps {
