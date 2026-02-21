@@ -1,6 +1,6 @@
 [package]
 name = "vortex"
-version = "0.1.0"
+version = "0.5.0"
 description = "Vortex - Real-time voice and text chat rooms"
 authors = ["Vortex Team"]
 license = "MIT"
@@ -23,3 +23,5 @@ tauri = { version = "2.10.0", features = ["tray-icon"] }
 tauri-plugin-log = "2"
 tauri-plugin-shell = "2"
 tauri-plugin-single-instance = "2"
+tauri-plugin-updater = "2"
+tauri-plugin-process = "2"
