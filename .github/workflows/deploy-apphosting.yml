@@ -78,8 +78,8 @@ jobs:
         run: echo "✅ Deployed to **preprod**" >> $GITHUB_STEP_SUMMARY
 
   deploy-prod:
-    needs: deploy-preprod
-    if: always() && needs.deploy-preprod.result == 'success'
+    needs: build
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.target == 'production'
     runs-on: ubuntu-latest
     environment: production
     steps:
