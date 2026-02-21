@@ -10,7 +10,9 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { ArrowLeft, User as UserIcon, Mic, AlertCircle, Lock, Users, Settings2, Sparkles } from 'lucide-react';
+import { ArrowLeft, User as UserIcon, Mic, AlertCircle, Lock, Users, Settings2, Sparkles, ShieldCheck, Info } from 'lucide-react';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip';
 import { useToast } from '@/hooks/use-toast';
 import { Progress } from '@/components/ui/progress';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
@@ -36,6 +38,7 @@ export default function SetupPage() {
   const [isJoining, setIsJoining] = useState(false);
   const [requiresPassword, setRequiresPassword] = useState(false);
   const [roomPassword, setRoomPassword] = useState('');
+  const [ageConfirmed, setAgeConfirmed] = useState(false);
   const { toast } = useToast();
 
   const localStreamRef = useRef<MediaStream | null>(null);
@@ -264,7 +267,7 @@ export default function SetupPage() {
     );
   }
 
-  const canJoin = nameInput.trim().length >= 2;
+  const canJoin = nameInput.trim().length >= 2 && ageConfirmed;
 
   return (
     <main className="flex min-h-screen flex-col items-center justify-center p-4 sm:p-8">
@@ -423,6 +426,37 @@ export default function SetupPage() {
               </div>
             )}
           </div>
+
+          <div className="flex items-start gap-3 pt-3 border-t">
+            <Checkbox
+              id="age-confirm"
+              checked={ageConfirmed}
+              onCheckedChange={(checked) => setAgeConfirmed(checked === true)}
+              className="mt-0.5"
+            />
+            <div className="grid gap-1">
+              <label htmlFor="age-confirm" className="text-sm font-medium leading-none cursor-pointer flex items-center gap-1.5">
+                <ShieldCheck className="h-3.5 w-3.5 text-primary" />
+                I confirm that I am at least 13 years old
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Info className="h-3.5 w-3.5 text-muted-foreground/60 hover:text-muted-foreground cursor-help" />
+                    </TooltipTrigger>
+                    <TooltipContent side="top" className="max-w-[260px] text-xs">
+                      <p>In accordance with Turkish law (KVKK) and international regulations (COPPA), users under 13 are not permitted to use this service. By checking this box, you confirm your age and accept full responsibility for your activity.</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </label>
+              <p className="text-[11px] text-muted-foreground leading-snug">
+                By joining, you agree to the{' '}
+                <a href="/terms" target="_blank" className="text-primary hover:underline">Terms of Service</a>
+                {' '}and{' '}
+                <a href="/privacy" target="_blank" className="text-primary hover:underline">Privacy Policy</a>.
+              </p>
+            </div>
+          </div>
         </CardContent>
 
         <CardFooter>
@@ -441,9 +475,11 @@ export default function SetupPage() {
                 <Sparkles className="mr-2 h-5 w-5" />
                 {requiresPassword && !roomPassword.trim()
                   ? 'Enter Password to Continue'
-                  : micPermission !== 'granted'
-                    ? 'Allow Microphone to Join'
-                    : 'Join Room'}
+                  : !ageConfirmed
+                    ? 'Confirm Age to Continue'
+                    : micPermission !== 'granted'
+                      ? 'Allow Microphone to Join'
+                      : 'Join Room'}
               </>
             )}
           </Button>

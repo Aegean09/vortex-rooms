@@ -74,7 +74,14 @@ export default function HomePage() {
 
       <footer className="absolute bottom-0 left-0 right-0 flex flex-col items-center pb-4">
         <RoadmapPopover />
-        <p className="mt-3 text-center text-xs text-muted-foreground">© 2026 Ege Durmaz. All rights reserved.</p>
+        <div className="mt-3 flex items-center gap-3 text-xs text-muted-foreground">
+          <a href="/terms" className="hover:text-foreground transition-colors">Terms</a>
+          <span>·</span>
+          <a href="/privacy" className="hover:text-foreground transition-colors">Privacy</a>
+          <span>·</span>
+          <a href="mailto:abuse.vortex.rooms@gmail.com" className="hover:text-foreground transition-colors">Report Abuse</a>
+        </div>
+        <p className="mt-2 text-center text-xs text-muted-foreground">© 2026 Ege Durmaz. All rights reserved.</p>
       </footer>
     </main>
   );
