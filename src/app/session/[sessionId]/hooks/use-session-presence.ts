@@ -21,6 +21,8 @@ interface UseSessionPresenceParams {
   username: string | null;
   avatarStyle?: string | null;
   avatarSeed?: string | null;
+  /** When true, plaintext name/avatar are NOT written — a placeholder is used instead. */
+  e2eEnabled?: boolean;
 }
 
 export const useSessionPresence = ({
@@ -30,6 +32,7 @@ export const useSessionPresence = ({
   username,
   avatarStyle,
   avatarSeed,
+  e2eEnabled,
 }: UseSessionPresenceParams) => {
   const [hasJoined, setHasJoined] = useState(false);
 
@@ -70,7 +73,7 @@ export const useSessionPresence = ({
       const existingDoc = await getDoc(userDocRef);
       const userData: Record<string, unknown> = {
         id: authUser.uid,
-        name: username,
+        name: e2eEnabled ? 'Encrypted' : username,
         sessionId,
         isScreenSharing: false,
         isMuted: false,
@@ -79,8 +82,10 @@ export const useSessionPresence = ({
         userData.subSessionId = 'general';
         userData.joinedAt = serverTimestamp();
       }
-      if (avatarStyle) userData.avatarStyle = avatarStyle;
-      if (avatarSeed) userData.avatarSeed = avatarSeed;
+      if (!e2eEnabled) {
+        if (avatarStyle) userData.avatarStyle = avatarStyle;
+        if (avatarSeed) userData.avatarSeed = avatarSeed;
+      }
       await setDoc(userDocRef, userData, { merge: true });
       if (!existingDoc.exists()) {
         const sessionSnap = await getDoc(sessionDocRef);
