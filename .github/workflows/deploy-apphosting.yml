@@ -88,8 +88,9 @@ jobs:
 
       - name: Deploy to Preprod
         run: |
-          firebase apphosting:rollouts:create studio-preprod \
+          firebase apphosting:rollouts:create vortex-rooms-preprod \
             --git-branch main \
+            --location europe-west4 \
             --project ${{ secrets.FIREBASE_PROJECT_ID }} \
             --non-interactive
         env:
