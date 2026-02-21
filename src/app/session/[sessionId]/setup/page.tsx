@@ -10,8 +10,9 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { ArrowLeft, User as UserIcon, Mic, AlertCircle, Lock, Users, Settings2, Sparkles, ShieldCheck } from 'lucide-react';
+import { ArrowLeft, User as UserIcon, Mic, AlertCircle, Lock, Users, Settings2, Sparkles, ShieldCheck, Info } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip';
 import { useToast } from '@/hooks/use-toast';
 import { Progress } from '@/components/ui/progress';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
@@ -437,6 +438,16 @@ export default function SetupPage() {
               <label htmlFor="age-confirm" className="text-sm font-medium leading-none cursor-pointer flex items-center gap-1.5">
                 <ShieldCheck className="h-3.5 w-3.5 text-primary" />
                 I confirm that I am at least 13 years old
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Info className="h-3.5 w-3.5 text-muted-foreground/60 hover:text-muted-foreground cursor-help" />
+                    </TooltipTrigger>
+                    <TooltipContent side="top" className="max-w-[260px] text-xs">
+                      <p>In accordance with Turkish law (KVKK) and international regulations (COPPA), users under 13 are not permitted to use this service. By checking this box, you confirm your age and accept full responsibility for your activity.</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
               </label>
               <p className="text-[11px] text-muted-foreground leading-snug">
                 By joining, you agree to the{' '}
