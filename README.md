@@ -26,6 +26,33 @@
 
 ---
 
+## Download Desktop App
+
+<p align="center">
+  <a href="https://github.com/Aegean09/vortex-rooms/releases/latest">
+    <img src="https://img.shields.io/badge/Windows-0078D6?style=for-the-badge&logo=windows&logoColor=white" alt="Windows" />
+  </a>
+  &nbsp;
+  <a href="https://github.com/Aegean09/vortex-rooms/releases/latest">
+    <img src="https://img.shields.io/badge/macOS-000000?style=for-the-badge&logo=apple&logoColor=white" alt="macOS" />
+  </a>
+  &nbsp;
+  <a href="https://github.com/Aegean09/vortex-rooms/releases/latest">
+    <img src="https://img.shields.io/badge/Linux-FCC624?style=for-the-badge&logo=linux&logoColor=black" alt="Linux" />
+  </a>
+</p>
+
+| Platform | File |
+|----------|------|
+| Windows | `.msi` or `.exe` (NSIS) |
+| macOS (Apple Silicon) | `.dmg` (aarch64) |
+| macOS (Intel) | `.dmg` (x64) |
+| Linux | `.deb` or `.AppImage` |
+
+> The desktop app auto-updates when a new version is released.
+
+---
+
 Create a room, share the link, and talk. That's it. No downloads, no sign-ups, no data stored — your voice goes directly from browser to browser via WebRTC. When everyone leaves, the room disappears.
 
 ## Features
@@ -62,7 +89,7 @@ Create a room, share the link, and talk. That's it. No downloads, no sign-ups, n
 - Anonymous auth — zero PII collected
 - Firestore security rules enforcing session-based access
 - Cloud Functions: room password hash (setRoomPassword / verifyRoomPassword) and optional 24-hour session cleanup
-- Tauri-ready for optional desktop builds
+- Tauri desktop app with auto-update (Windows, macOS, Linux)
 
 ## Architecture
 
@@ -189,7 +216,8 @@ vortex-rooms/
 ├── cloud-jobs/                               # Scheduled session cleanup (Node.js)
 ├── .github/workflows/
 │   ├── cleanup-sessions.yml                  # Daily session purge
-│   └── deploy-apphosting.yml                 # Deployment pipeline
+│   ├── deploy-apphosting.yml                 # Deployment pipeline
+│   └── tauri-build.yml                       # Cross-platform Tauri build & release
 ├── firestore.rules                           # Firestore security rules
 └── public/audio-worklets/                    # RNNoise WASM + worklet files
 ```
@@ -222,6 +250,7 @@ This is intentional. Vortex is built for small, private rooms with zero infrastr
 - [x] Room passwords (Option C — hash in `roomSecrets`, callables only)
 - [x] Automated session cleanup
 - [x] E2E message encryption (Megolm/Olm; per-participant keys; new-joiner visibility and key-read rules)
+- [x] Desktop app with auto-update (Tauri — Windows, macOS, Linux)
 
 **Planned**
 - [ ] SFU (scalable voice/video for larger rooms)
