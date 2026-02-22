@@ -9,8 +9,6 @@ import { RoadmapPopover } from '@/components/roadmap-popover/roadmap-popover';
 import { useAuth, useUser } from '@/firebase';
 import { initiateAnonymousSignIn } from '@/firebase/non-blocking-login';
 import { generateRoomCode } from '@/lib/room-code';
-import { Onboarding } from '@/components/onboarding/onboarding';
-
 export default function HomePage() {
   const router = useRouter();
   const auth = useAuth();
@@ -34,7 +32,6 @@ export default function HomePage() {
 
   return (
     <main className="flex min-h-screen flex-col items-center justify-center p-8">
-      <Onboarding />
       <div className="absolute inset-0 -z-10 h-full w-full bg-background bg-[radial-gradient(#2f2f33_1px,transparent_1px)] [background-size:32px_32px]"></div>
       <Card className="w-full max-w-md shadow-2xl bg-card/80 backdrop-blur-sm border-primary/20">
         <CardHeader className="text-center">
