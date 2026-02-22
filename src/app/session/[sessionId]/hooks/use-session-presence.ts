@@ -14,6 +14,7 @@ import {
 } from 'firebase/firestore';
 import { Firestore } from 'firebase/firestore';
 import { User as FirebaseUser } from 'firebase/auth';
+import { callDeleteSessionCompletely } from '@/firebase/session-callables';
 
 const HEARTBEAT_INTERVAL_MS = 10_000;
 const STALE_THRESHOLD_MS = 25_000;
@@ -28,6 +29,8 @@ interface UseSessionPresenceParams {
   avatarSeed?: string | null;
   e2eEnabled?: boolean;
 }
+
+let presenceEffectRunId = 0;
 
 export const useSessionPresence = ({
   firestore,
@@ -56,7 +59,11 @@ export const useSessionPresence = ({
     try {
       const usersSnapshot = await getDocs(usersCollectionRef);
       if (usersSnapshot.size <= 1) {
-        await deleteDoc(sessionDocRef);
+        try {
+          await callDeleteSessionCompletely(sessionId);
+        } catch {
+          await deleteDoc(sessionDocRef);
+        }
       } else {
         const sessionSnap = await getDoc(sessionDocRef);
         if (sessionSnap.exists() && sessionSnap.data().participantCount != null) {
@@ -159,24 +166,24 @@ export const useSessionPresence = ({
     setTimeout(cleanupStale, 3_000);
 
     const onBeforeUnload = () => handleLeaveSync();
-    const onVisibilityChange = () => {
-      if (document.visibilityState === 'hidden') {
-        handleLeaveSync();
-      }
-    };
-
     window.addEventListener('beforeunload', onBeforeUnload);
-    document.addEventListener('visibilitychange', onVisibilityChange);
+
+    const runId = ++presenceEffectRunId;
 
     return () => {
       window.removeEventListener('beforeunload', onBeforeUnload);
-      document.removeEventListener('visibilitychange', onVisibilityChange);
       if (heartbeatRef.current) {
         clearInterval(heartbeatRef.current);
         heartbeatRef.current = null;
       }
       clearInterval(staleCleanupInterval);
-      handleLeave();
+      // Delayed leave: only run if effect hasn't re-run (avoids permission error when
+      // users collection is still subscribed during tab switch / effect re-run).
+      setTimeout(() => {
+        if (presenceEffectRunId === runId) {
+          handleLeave();
+        }
+      }, 150);
     };
   }, [firestore, authUser, sessionId, username, handleLeave, handleLeaveSync, e2eEnabled, avatarStyle, avatarSeed]);
 

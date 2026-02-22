@@ -45,7 +45,7 @@ export default function PrivacyPage() {
 
             <h3 className="text-foreground/80 font-medium mt-4 mb-2">2.3 Not Collected</h3>
             <ul className="list-disc pl-6 space-y-1.5">
-              <li>We do <strong>not</strong> collect IP addresses at the application level.</li>
+              <li>We do <strong>not</strong> intentionally collect IP addresses; however, WebRTC ICE candidates (used for NAT traversal) may contain IP information and are stored temporarily in Firestore until the room is deleted.</li>
               <li>We use a single <strong>functional cookie</strong> (<code className="text-xs">sidebar_state</code>) to remember your UI preference. It is not used for tracking and is not shared with third parties. We do <strong>not</strong> use analytics or third-party tracking.</li>
               <li>We do <strong>not</strong> collect email addresses, phone numbers, or real names.</li>
               <li>Voice data is transmitted <strong>peer-to-peer (WebRTC)</strong> and never passes through our servers.</li>
@@ -57,7 +57,8 @@ export default function PrivacyPage() {
             <ul className="list-disc pl-6 space-y-1.5">
               <li>To provide and operate the real-time chat service.</li>
               <li>To detect and remove stale/disconnected users from rooms.</li>
-              <li>To respond to abuse reports and legal requests.</li>
+              <li>To process abuse reports — reports (message context, description, report type) are stored in Firestore and reviewed within 24 hours.</li>
+              <li>To respond to legal requests.</li>
             </ul>
           </section>
 

@@ -360,6 +360,9 @@ export default function SessionPage() {
                 onSendMessage={handleSendMessage}
                 channelName={activeTextChannelName}
                 canSendMessage={canSendMessage}
+                sessionId={sessionId}
+                authUserId={authUser?.uid}
+                firestore={firestore}
               />
             </div>
             {isSomeoneScreenSharing && showScreenShare && (

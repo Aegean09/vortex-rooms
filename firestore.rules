@@ -198,5 +198,41 @@ service cloud.firestore {
     match /roomSecrets/{sessionId} {
       allow read, write: if false;
     }
+
+    /**
+     * @description Abuse reports. Authenticated users can create reports only.
+     * Read/update/delete denied; only Cloud Function can read.
+     */
+    match /abuseReports/{reportId} {
+      allow create: if isSignedIn()
+                    && request.resource.data.keys().hasOnly([
+                      'sessionId',
+                      'reporterUid',
+                      'reportedMessages',
+                      'reportType',
+                      'description',
+                      'channelName',
+                      'createdAt',
+                      'formattedReport',
+                      'reportedMessageId',
+                      'reportedUserId',
+                      'reportedUserName',
+                      'reportedMessageText'
+                    ])
+                    && request.resource.data.reporterUid == request.auth.uid
+                    && request.resource.data.sessionId is string
+                    && request.resource.data.reportType is string
+                    && request.resource.data.description is string
+                    && request.resource.data.description.size() >= 10
+                    && request.resource.data.description.size() <= 2000
+                    && request.resource.data.channelName is string
+                    && request.resource.data.channelName.size() <= 64
+                    && request.resource.data.formattedReport is string
+                    && request.resource.data.formattedReport.size() <= 12000
+                    && request.resource.data.reportedMessages is list
+                    && request.resource.data.reportedMessages.size() > 0
+                    && request.resource.data.reportedMessages.size() <= 30;
+      allow read, update, delete: if false;
+    }
   }
 }

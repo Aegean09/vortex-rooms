@@ -159,13 +159,31 @@ async function cleanupOldSessions() {
       console.log(`Processing session ${sessionId}...`);
       
       try {
-        // Delete subcollections: users, messages, subsessions
-        const subcollections = ['users', 'messages', 'subsessions'];
+        // Delete subcollections
+        const subcollections = ['users', 'messages', 'subsessions', 'textchannels', 'e2e'];
         
         for (const subcollectionName of subcollections) {
           await deleteSubcollection(sessionId, subcollectionName);
         }
-        
+
+        // Delete calls (each call has offerCandidates + answerCandidates subcollections)
+        const callsSnap = await db.collection('sessions').doc(sessionId).collection('calls').get();
+        for (const callDoc of callsSnap.docs) {
+          const callRef = callDoc.ref;
+          const deleteSub = async (name) => {
+            const snap = await callRef.collection(name).get();
+            const batch = db.batch();
+            snap.docs.forEach((d) => batch.delete(d.ref));
+            if (!snap.empty) await batch.commit();
+          };
+          await deleteSub('offerCandidates');
+          await deleteSub('answerCandidates');
+          await callRef.delete();
+        }
+
+        // Delete room password hash if exists
+        await db.doc(`roomSecrets/${sessionId}`).delete().catch(() => {});
+
         // Delete the session document itself
         await sessionDoc.ref.delete();
         deletedCount++;
@@ -199,4 +217,3 @@ cleanupOldSessions()
     console.error('Cleanup failed:', error);
     process.exit(1);
   });
-

@@ -45,7 +45,7 @@ export default function SetupPage() {
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
-  const animationFrameRef = useRef<number>();
+  const animationFrameRef = useRef<number | null>(null);
 
   const sessionRef = useMemoFirebase(
     () => (firestore ? doc(firestore, 'sessions', sessionId) : null),
@@ -72,7 +72,7 @@ export default function SetupPage() {
   const cleanupAudio = useCallback(() => {
     if (animationFrameRef.current) {
       cancelAnimationFrame(animationFrameRef.current);
-      animationFrameRef.current = undefined;
+      animationFrameRef.current = null;
     }
     sourceRef.current?.disconnect();
     analyserRef.current?.disconnect();
