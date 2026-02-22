@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 
 export const metadata = {
-  title: 'Terms of Service — Vortex',
+  title: 'Terms of Service - Vortex',
 };
 
 export default function TermsPage() {
@@ -15,7 +15,7 @@ export default function TermsPage() {
         </Link>
 
         <h1 className="text-3xl font-bold tracking-tight mb-2">Terms of Service</h1>
-        <p className="text-sm text-muted-foreground mb-10">Last updated: February 15, 2026</p>
+        <p className="text-sm text-muted-foreground mb-10">Last updated: February 23, 2026</p>
 
         <div className="prose prose-invert prose-sm max-w-none space-y-8 text-muted-foreground [&_h2]:text-foreground [&_h2]:text-lg [&_h2]:font-semibold [&_h2]:mt-8 [&_h2]:mb-3 [&_strong]:text-foreground">
 
@@ -26,7 +26,7 @@ export default function TermsPage() {
 
           <section>
             <h2>2. Description of Service</h2>
-            <p>Vortex provides ephemeral, real-time voice and text chat rooms. Rooms are temporary — when all participants leave, the room and its data are deleted. The Service offers optional end-to-end encryption (E2E) for messages using the Megolm protocol.</p>
+            <p>Vortex provides ephemeral, real-time voice and text chat rooms. Rooms are temporary: when all participants leave, room data is removed. The Service offers optional end-to-end encryption (E2E) for messages using the Megolm protocol and optional room password protection.</p>
           </section>
 
           <section>
@@ -44,6 +44,7 @@ export default function TermsPage() {
               <li>Engage in harassment, threats, hate speech, or incitement to violence.</li>
               <li>Distribute malware, phishing links, or other harmful software.</li>
               <li>Impersonate others or misrepresent your identity for fraudulent purposes.</li>
+              <li>Attempt brute-force, scraping, automation abuse, or any attempt to bypass room access controls (including room passwords).</li>
               <li>Violate any applicable local, national, or international law or regulation.</li>
               <li>Attempt to circumvent, disable, or interfere with the security features of the Service.</li>
             </ul>
@@ -53,15 +54,16 @@ export default function TermsPage() {
             <h2>5. End-to-End Encryption (E2E)</h2>
             <p>When E2E is enabled, messages are encrypted on the sender&apos;s device and can only be decrypted by room participants. The Service operator <strong>cannot read E2E-encrypted message content</strong>. However:</p>
             <ul className="list-disc pl-6 space-y-1.5 mt-2">
-              <li>Metadata (who joined which room, when, session duration) may be logged for security and abuse prevention purposes.</li>
+              <li>Metadata (for example, room membership events and timing) may be processed for security and abuse prevention.</li>
               <li>E2E encryption does not exempt you from complying with applicable laws.</li>
-              <li>If illegal activity is suspected, available metadata will be provided to law enforcement upon valid legal request.</li>
+              <li>If illegal activity is suspected, available metadata may be provided to law enforcement upon valid legal request.</li>
             </ul>
           </section>
 
           <section>
             <h2>6. Reporting and Enforcement</h2>
-            <p>If you encounter illegal content or behavior, you must report it using the in-app report feature or by emailing <a href="mailto:abuse.vortex.rooms@gmail.com" className="text-primary hover:underline">abuse.vortex.rooms@gmail.com</a>. We reserve the right to:</p>
+            <p><strong>When &quot;Report abuse&quot; is used, selected message context may be transmitted in readable form for moderation and legal review.</strong></p>
+            <p>If you encounter illegal content or behavior, report it via the in-app report feature or by emailing <a href="mailto:abuse.vortex.rooms@gmail.com" className="text-primary hover:underline">abuse.vortex.rooms@gmail.com</a>. We reserve the right to:</p>
             <ul className="list-disc pl-6 space-y-1.5 mt-2">
               <li>Remove any content or terminate any session that violates these Terms.</li>
               <li>Report illegal activity to relevant law enforcement authorities.</li>
@@ -72,7 +74,7 @@ export default function TermsPage() {
 
           <section>
             <h2>7. User Responsibility</h2>
-            <p>You are solely responsible for the content you share through the Service. Room creators bear additional responsibility for the activity within rooms they create. The Service is provided &quot;as is&quot; without warranties of any kind.</p>
+            <p>You are solely responsible for content you share through the Service and for safeguarding room links/passwords you distribute. The Service is provided &quot;as is&quot; without warranties of any kind.</p>
           </section>
 
           <section>
@@ -82,7 +84,7 @@ export default function TermsPage() {
 
           <section>
             <h2>9. Modifications</h2>
-            <p>We reserve the right to modify these Terms at any time. Continued use of the Service after changes constitutes acceptance of the new Terms.</p>
+            <p>We may modify these Terms from time to time. Updated Terms become effective when posted on this page. Continued use of the Service after updates constitutes acceptance of the revised Terms.</p>
           </section>
 
           <section>
