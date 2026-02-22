@@ -10,16 +10,18 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { ArrowLeft, User as UserIcon, Mic, AlertCircle, Lock, Users, Settings2, Sparkles, ShieldCheck, Info } from 'lucide-react';
+import { ArrowLeft, User as UserIcon, Mic, AlertCircle, Lock, Unlock, Users, Sparkles, ShieldCheck, Info, Eye, EyeOff } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip';
 import { useToast } from '@/hooks/use-toast';
 import { Progress } from '@/components/ui/progress';
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { generateRandomSeed, AVATAR_STYLE } from '@/helpers/avatar-helpers';
 import { USER_NAME_MAX_LENGTH, ROOM_PASSWORD_MAX_LENGTH } from '@/constants/common';
+import { cn } from '@/lib/utils';
 
 type RoomType = 'default' | 'custom';
+
+type StepId = 'password' | 'name' | 'room' | 'audio' | 'checkbox';
 
 export default function SetupPage() {
   const router = useRouter();
@@ -39,6 +41,9 @@ export default function SetupPage() {
   const [requiresPassword, setRequiresPassword] = useState(false);
   const [roomPassword, setRoomPassword] = useState('');
   const [ageConfirmed, setAgeConfirmed] = useState(false);
+  const [currentStepIndex, setCurrentStepIndex] = useState(0);
+  const [showRoomPassword, setShowRoomPassword] = useState(false);
+  const [showCreatePassword, setShowCreatePassword] = useState(false);
   const { toast } = useToast();
 
   const localStreamRef = useRef<MediaStream | null>(null);
@@ -53,12 +58,31 @@ export default function SetupPage() {
   );
   const { data: sessionData } = useDoc<any>(sessionRef);
 
+  const isCreating = !sessionData;
+  const needsPassword = requiresPassword && (sessionData?.requiresPassword || sessionData?.password);
+
+  const steps: StepId[] = isCreating
+    ? ['name', 'room', 'audio', 'checkbox']
+    : needsPassword
+      ? ['password', 'name', 'audio', 'checkbox']
+      : ['name', 'audio', 'checkbox'];
+
+  const currentStep = steps[currentStepIndex];
+  const isLastStep = currentStepIndex === steps.length - 1;
+
   useEffect(() => {
-    const needsPassword = sessionData?.requiresPassword || sessionData?.password;
-    if (needsPassword && !requiresPassword) {
+    if (currentStepIndex >= steps.length) {
+      setCurrentStepIndex(Math.max(0, steps.length - 1));
+    }
+  }, [steps.length, currentStepIndex]);
+
+  useEffect(() => {
+    const pw = sessionData?.requiresPassword || sessionData?.password;
+    if (pw && !requiresPassword) {
       const isCreator = sessionData.createdBy === authUser?.uid;
       if (!isCreator) {
         setRequiresPassword(true);
+        setCurrentStepIndex(0);
       }
     }
   }, [sessionData, requiresPassword, authUser]);
@@ -76,7 +100,7 @@ export default function SetupPage() {
     }
     sourceRef.current?.disconnect();
     analyserRef.current?.disconnect();
-    localStreamRef.current?.getTracks().forEach(track => track.stop());
+    localStreamRef.current?.getTracks().forEach((track) => track.stop());
     if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
       audioContextRef.current.close().catch(() => {});
     }
@@ -124,21 +148,45 @@ export default function SetupPage() {
     }
   }, [cleanupAudio, startAudioProcessing]);
 
-  useEffect(() => {
-    return () => {
-      cleanupAudio();
-    };
-  }, [cleanupAudio]);
+  useEffect(() => () => cleanupAudio(), [cleanupAudio]);
+
+  const canAdvanceStep = () => {
+    switch (currentStep) {
+      case 'password':
+        return roomPassword.trim().length > 0;
+      case 'name':
+        return nameInput.trim().length >= 2;
+      case 'room':
+        if (roomType === 'custom') {
+          const maxNum = maxUsers.trim() ? Number(maxUsers) : 0;
+          return password.trim().length > 0 && maxUsers.trim().length > 0 && maxNum > 0 && maxNum <= 100;
+        }
+        return true;
+      case 'audio':
+        return micPermission === 'granted';
+      case 'checkbox':
+        return ageConfirmed;
+      default:
+        return false;
+    }
+  };
+
+  const handleAdvance = () => {
+    if (isLastStep) {
+      handleJoin();
+    } else {
+      setCurrentStepIndex((i) => Math.min(i + 1, steps.length - 1));
+    }
+  };
 
   const handleJoin = async () => {
     if (!nameInput.trim() || !firestore || !authUser || !sessionId || isJoining) return;
 
-    const needsPassword = sessionData?.requiresPassword || sessionData?.password;
-    if (needsPassword) {
+    const pw = sessionData?.requiresPassword || sessionData?.password;
+    if (pw) {
       const isCreator = sessionData.createdBy === authUser.uid;
       if (!isCreator) {
         if (!roomPassword.trim()) {
-          setRequiresPassword(true);
           toast({
             variant: 'destructive',
             title: 'Password Required',
@@ -146,7 +194,6 @@ export default function SetupPage() {
           });
           return;
         }
-
         if (sessionData.requiresPassword) {
           try {
             const result = await callVerifyRoomPassword(sessionId, roomPassword.trim());
@@ -159,7 +206,7 @@ export default function SetupPage() {
               setRoomPassword('');
               return;
             }
-          } catch (err) {
+          } catch {
             toast({
               variant: 'destructive',
               title: 'Error',
@@ -180,7 +227,6 @@ export default function SetupPage() {
     }
 
     setIsJoining(true);
-
     const existingMaxUsers = sessionData?.maxUsers;
     const currentParticipantCount = sessionData?.participantCount ?? 0;
 
@@ -212,26 +258,19 @@ export default function SetupPage() {
     if (!sessionData) {
       newSessionData.createdBy = authUser.uid;
       newSessionData.e2eEnabled = true;
-
       if (roomType === 'custom') {
-        if (password.trim()) {
-          newSessionData.requiresPassword = true;
-        }
-        if (maxUsers.trim() && !isNaN(Number(maxUsers)) && Number(maxUsers) > 0) {
-          newSessionData.maxUsers = Number(maxUsers);
-          newSessionData.participantCount = 0;
-        }
+        newSessionData.requiresPassword = true;
+        newSessionData.maxUsers = Number(maxUsers);
+        newSessionData.participantCount = 0;
       }
     }
 
-    const isCreating = !sessionData;
-
-    if (isCreating) {
-      if (password.trim().length > 0) {
+    if (!sessionData) {
+      if (roomType === 'custom') {
         await setDoc(sessionDocRef, newSessionData, { merge: true });
         try {
           await callSetRoomPassword(sessionId, password.trim());
-        } catch (err) {
+        } catch {
           toast({
             variant: 'destructive',
             title: 'Error',
@@ -244,14 +283,23 @@ export default function SetupPage() {
         setDocumentNonBlocking(sessionDocRef, newSessionData, { merge: true });
       }
     }
-    // When joining existing room we do not write to session doc (only participants can update).
-    // Session page's useSessionPresence will add user to users and update participantCount.
 
     sessionStorage.setItem(`vortex-setup-complete-${sessionId}`, 'true');
+    setTimeout(() => router.push(`/session/${sessionId}`), 100);
+  };
 
-    setTimeout(() => {
-      router.push(`/session/${sessionId}`);
-    }, 100);
+  const getButtonLabel = () => {
+    if (isJoining) return 'Joining Room...';
+    if (isLastStep) {
+      if (currentStep === 'checkbox') return 'Join Room';
+      return 'Confirm Age to Continue';
+    }
+    return 'Continue';
+  };
+
+  const isStepVisible = (step: StepId) => {
+    const idx = steps.indexOf(step);
+    return idx >= 0 && idx <= currentStepIndex;
   };
 
   if (isUserLoading || !authUser || isJoining) {
@@ -266,8 +314,6 @@ export default function SetupPage() {
       </div>
     );
   }
-
-  const canJoin = nameInput.trim().length >= 2 && ageConfirmed;
 
   return (
     <main className="flex min-h-screen flex-col items-center justify-center p-4 sm:p-8">
@@ -285,8 +331,14 @@ export default function SetupPage() {
         </CardHeader>
 
         <CardContent className="space-y-6">
-          {requiresPassword && (sessionData?.requiresPassword || sessionData?.password) && (
-            <div className="space-y-2">
+          {/* Step 1: Password (join only) */}
+          {isStepVisible('password') && (
+            <div
+              className={cn(
+                'space-y-2 overflow-hidden transition-all duration-300',
+                currentStep === 'password' ? 'animate-in fade-in slide-in-from-top-2' : 'opacity-70'
+              )}
+            >
               <Label htmlFor="room-password" className="text-sm font-medium">
                 Password
               </Label>
@@ -294,90 +346,132 @@ export default function SetupPage() {
                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
                   id="room-password"
-                  type="password"
+                  type={showRoomPassword ? 'text' : 'password'}
                   value={roomPassword}
                   onChange={(e) => setRoomPassword(e.target.value)}
                   placeholder="Enter room password"
-                  className="pl-10 h-12 text-base"
+                  className="pl-10 pr-10 h-12 text-base border-0 focus-visible:ring-0 focus-visible:ring-offset-0"
                   autoComplete="off"
-                  autoFocus
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && roomPassword.trim() && canJoin) {
-                      handleJoin();
-                    }
-                  }}
+                  autoFocus={currentStep === 'password'}
+                  onKeyDown={(e) => e.key === 'Enter' && roomPassword.trim() && handleAdvance()}
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowRoomPassword((v) => !v)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  tabIndex={-1}
+                >
+                  {showRoomPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
               </div>
-              <p className="text-xs text-muted-foreground">
-                This is a password protected room. Please enter the password to continue.
-              </p>
+              <p className="text-xs text-muted-foreground">This room is password protected.</p>
             </div>
           )}
 
-          <div className="space-y-2">
-            <Label htmlFor="name" className="text-sm font-medium">
-              Your Name
-            </Label>
-            <div className="relative">
-              <UserIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                id="name"
-                value={nameInput}
-                onChange={(e) => setNameInput(e.target.value)}
-                placeholder="Your cool name"
-                className="pl-10 h-12 text-base"
-                autoComplete="off"
-                required
-                minLength={2}
-                maxLength={USER_NAME_MAX_LENGTH}
-                autoFocus={!requiresPassword}
-                disabled={requiresPassword && !roomPassword.trim()}
-              />
-            </div>
-          </div>
-
-          {!sessionData && (
-            <div className="space-y-4">
-              <div className="flex items-center gap-2">
-                <Settings2 className="h-4 w-4" />
-                <span className="text-sm font-medium">Room Settings</span>
+          {/* Step 2: Name */}
+          {isStepVisible('name') && (
+            <div
+              className={cn(
+                'space-y-2 overflow-hidden transition-all duration-300',
+                currentStep === 'name' ? 'animate-in fade-in slide-in-from-top-2' : 'opacity-70'
+              )}
+            >
+              <Label htmlFor="name" className="text-sm font-medium">
+                Your Name
+              </Label>
+              <div className="relative">
+                <UserIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  id="name"
+                  value={nameInput}
+                  onChange={(e) => setNameInput(e.target.value)}
+                  placeholder="Your cool name"
+                  className="pl-10 h-12 text-base border-0 focus-visible:ring-0 focus-visible:ring-offset-0"
+                  autoComplete="off"
+                  minLength={2}
+                  maxLength={USER_NAME_MAX_LENGTH}
+                  autoFocus={currentStep === 'name'}
+                  onKeyDown={(e) => e.key === 'Enter' && nameInput.trim().length >= 2 && handleAdvance()}
+                />
               </div>
-              <RadioGroup value={roomType} onValueChange={(value) => setRoomType(value as RoomType)}>
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="default" id="default" />
-                  <Label htmlFor="default" className="font-normal cursor-pointer">
-                    Default Room
-                  </Label>
-                </div>
-                <div className="flex items-center space-x-2 mt-2">
-                  <RadioGroupItem value="custom" id="custom" />
-                  <Label htmlFor="custom" className="font-normal cursor-pointer">
-                    Custom Room
-                  </Label>
-                </div>
-              </RadioGroup>
+            </div>
+          )}
 
-              {roomType === 'custom' && (
-                <div className="grid gap-4 pt-2 border-t">
+          {/* Step 3: Room type (create only) */}
+          {isCreating && isStepVisible('room') && (
+            <div
+              className={cn(
+                'space-y-4 overflow-hidden transition-all duration-300',
+                currentStep === 'room' ? 'animate-in fade-in slide-in-from-top-2' : 'opacity-70'
+              )}
+            >
+              <Label className="text-sm font-medium">Room Type</Label>
+              <div className="flex justify-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setRoomType('default')}
+                  className={cn(
+                    'flex flex-col items-center justify-center gap-2 p-4 rounded-xl border-2 transition-all duration-200 w-[130px]',
+                    roomType === 'default'
+                      ? 'border-primary bg-primary/10'
+                      : 'border-border hover:border-primary/50 hover:bg-muted/30'
+                  )}
+                >
+                  <Unlock className={cn('h-8 w-8', roomType === 'default' ? 'text-primary' : 'text-muted-foreground')} />
+                  <span className="font-medium text-sm">Unlocked</span>
+                  <span className="text-[10px] text-muted-foreground text-center leading-tight">Anyone with link</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRoomType('custom')}
+                  className={cn(
+                    'flex flex-col items-center justify-center gap-2 p-4 rounded-xl border-2 transition-all duration-200 w-[130px]',
+                    roomType === 'custom'
+                      ? 'border-primary bg-primary/10'
+                      : 'border-border hover:border-primary/50 hover:bg-muted/30'
+                  )}
+                >
+                  <Lock className={cn('h-8 w-8', roomType === 'custom' ? 'text-primary' : 'text-muted-foreground')} />
+                  <span className="font-medium text-sm">Locked</span>
+                  <span className="text-[10px] text-muted-foreground text-center leading-tight">Password & max</span>
+                </button>
+              </div>
+
+              <div
+                className={cn(
+                  'grid gap-4 pt-2 overflow-hidden transition-all duration-300 ease-in-out',
+                  roomType === 'custom' ? 'max-h-[200px] opacity-100' : 'max-h-0 opacity-0 pt-0'
+                )}
+              >
                   <div className="grid gap-2">
                     <Label htmlFor="password" className="flex items-center gap-2 text-sm">
                       <Lock className="h-4 w-4" />
-                      Password
+                      Password <span className="text-destructive">*</span>
                     </Label>
-                    <Input
-                      id="password"
-                      type="password"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      placeholder="Enter password (optional)"
-                      maxLength={ROOM_PASSWORD_MAX_LENGTH}
-                      className="h-10"
-                    />
+                    <div className="relative">
+                      <Input
+                        id="password"
+                        type={showCreatePassword ? 'text' : 'password'}
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        placeholder="Enter password"
+                        maxLength={ROOM_PASSWORD_MAX_LENGTH}
+                        className="h-10 pr-10 border-0 focus-visible:ring-0 focus-visible:ring-offset-0"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowCreatePassword((v) => !v)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                        tabIndex={-1}
+                      >
+                        {showCreatePassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </button>
+                    </div>
                   </div>
                   <div className="grid gap-2">
                     <Label htmlFor="max-users" className="flex items-center gap-2 text-sm">
                       <Users className="h-4 w-4" />
-                      Max Users
+                      Max Users <span className="text-destructive">*</span>
                     </Label>
                     <Input
                       id="max-users"
@@ -388,82 +482,97 @@ export default function SetupPage() {
                         const value = e.target.value;
                         if (value === '' || /^\d+$/.test(value)) {
                           const numValue = value === '' ? 0 : Number(value);
-                          if (value === '' || (numValue > 0 && numValue <= 100)) {
-                            setMaxUsers(value);
-                          }
+                          if (value === '' || (numValue > 0 && numValue <= 100)) setMaxUsers(value);
                         }
                       }}
                       placeholder="e.g. 10"
-                      className="h-10"
+                      className="h-10 border-0 focus-visible:ring-0 focus-visible:ring-offset-0"
                     />
                   </div>
+                </div>
+            </div>
+          )}
+
+          {/* Step 4: Audio */}
+          {isStepVisible('audio') && (
+            <div
+              className={cn(
+                'space-y-3 pt-2 border-t overflow-hidden transition-all duration-300',
+                currentStep === 'audio' ? 'animate-in fade-in slide-in-from-top-2' : 'opacity-70'
+              )}
+            >
+              <Label className="text-sm font-medium flex items-center gap-2">
+                <Mic className="h-4 w-4" />
+                Test Microphone
+              </Label>
+              {micPermission === 'prompt' && (
+                <Button size="sm" onClick={requestMicPermission} className="w-full">
+                  <Mic className="mr-2 h-4 w-4" /> Allow Microphone
+                </Button>
+              )}
+              {micPermission === 'granted' && (
+                <div className="space-y-2">
+                  <p className="text-xs text-muted-foreground">Speak into your mic to test</p>
+                  <Progress value={volume} className="w-full h-2" />
+                </div>
+              )}
+              {micPermission === 'denied' && (
+                <div className="flex items-center gap-2 text-xs text-destructive">
+                  <AlertCircle className="h-4 w-4" />
+                  <span>Microphone access denied</span>
                 </div>
               )}
             </div>
           )}
 
-          <div className="space-y-3 pt-2 border-t">
-            <Label className="text-sm font-medium flex items-center gap-2">
-              <Mic className="h-4 w-4" />
-              Test Microphone
-            </Label>
-
-            {micPermission === 'prompt' && (
-              <Button size="sm" onClick={requestMicPermission} className="w-full">
-                <Mic className="mr-2 h-4 w-4" /> Allow Microphone
-              </Button>
-            )}
-            {micPermission === 'granted' && (
-              <div className="space-y-2">
-                <p className="text-xs text-muted-foreground">Speak into your mic to test</p>
-                <Progress value={volume} className="w-full h-2" />
+          {/* Step 5: Checkbox */}
+          {isStepVisible('checkbox') && (
+            <div
+              className={cn(
+                'flex items-start gap-3 pt-3 border-t overflow-hidden transition-all duration-300',
+                currentStep === 'checkbox' ? 'animate-in fade-in slide-in-from-top-2' : 'opacity-70'
+              )}
+            >
+              <Checkbox
+                id="age-confirm"
+                checked={ageConfirmed}
+                onCheckedChange={(checked) => setAgeConfirmed(checked === true)}
+                className="mt-0.5"
+              />
+              <div className="grid gap-1">
+                <label
+                  htmlFor="age-confirm"
+                  className="text-sm font-medium leading-none cursor-pointer flex items-center gap-1.5"
+                >
+                  <ShieldCheck className="h-3.5 w-3.5 text-primary" />
+                  I confirm that I am at least 13 years old
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Info className="h-3.5 w-3.5 text-muted-foreground/60 hover:text-muted-foreground cursor-help" />
+                      </TooltipTrigger>
+                      <TooltipContent side="top" className="max-w-[260px] text-xs">
+                        <p>In accordance with Turkish law (KVKK) and international regulations (COPPA), users under 13 are not permitted to use this service.</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </label>
+                <p className="text-[11px] text-muted-foreground leading-snug">
+                  By joining, you agree to the{' '}
+                  <a href="/terms" target="_blank" className="text-primary hover:underline">Terms of Service</a>
+                  {' '}and{' '}
+                  <a href="/privacy" target="_blank" className="text-primary hover:underline">Privacy Policy</a>.
+                </p>
               </div>
-            )}
-            {micPermission === 'denied' && (
-              <div className="flex items-center gap-2 text-xs text-destructive">
-                <AlertCircle className="h-4 w-4" />
-                <span>Microphone access denied</span>
-              </div>
-            )}
-          </div>
-
-          <div className="flex items-start gap-3 pt-3 border-t">
-            <Checkbox
-              id="age-confirm"
-              checked={ageConfirmed}
-              onCheckedChange={(checked) => setAgeConfirmed(checked === true)}
-              className="mt-0.5"
-            />
-            <div className="grid gap-1">
-              <label htmlFor="age-confirm" className="text-sm font-medium leading-none cursor-pointer flex items-center gap-1.5">
-                <ShieldCheck className="h-3.5 w-3.5 text-primary" />
-                I confirm that I am at least 13 years old
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Info className="h-3.5 w-3.5 text-muted-foreground/60 hover:text-muted-foreground cursor-help" />
-                    </TooltipTrigger>
-                    <TooltipContent side="top" className="max-w-[260px] text-xs">
-                      <p>In accordance with Turkish law (KVKK) and international regulations (COPPA), users under 13 are not permitted to use this service. By checking this box, you confirm your age and accept full responsibility for your activity.</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              </label>
-              <p className="text-[11px] text-muted-foreground leading-snug">
-                By joining, you agree to the{' '}
-                <a href="/terms" target="_blank" className="text-primary hover:underline">Terms of Service</a>
-                {' '}and{' '}
-                <a href="/privacy" target="_blank" className="text-primary hover:underline">Privacy Policy</a>.
-              </p>
             </div>
-          </div>
+          )}
         </CardContent>
 
         <CardFooter>
           <Button
-            onClick={handleJoin}
+            onClick={handleAdvance}
             className="w-full h-12 text-lg font-semibold"
-            disabled={!canJoin || micPermission !== 'granted' || isJoining || (requiresPassword && !roomPassword.trim())}
+            disabled={!canAdvanceStep()}
           >
             {isJoining ? (
               <>
@@ -473,13 +582,7 @@ export default function SetupPage() {
             ) : (
               <>
                 <Sparkles className="mr-2 h-5 w-5" />
-                {requiresPassword && !roomPassword.trim()
-                  ? 'Enter Password to Continue'
-                  : !ageConfirmed
-                    ? 'Confirm Age to Continue'
-                    : micPermission !== 'granted'
-                      ? 'Allow Microphone to Join'
-                      : 'Join Room'}
+                {getButtonLabel()}
               </>
             )}
           </Button>
