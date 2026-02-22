@@ -27,7 +27,7 @@ export const useLocalVoiceActivity = (params: UseLocalVoiceActivityParams): bool
   const analyserRef = useRef<AnalyserNode | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
-  const animationFrameRef = useRef<number>();
+  const animationFrameRef = useRef<number | null>(null);
   const consecutiveActiveFramesRef = useRef(0);
   const consecutiveInactiveFramesRef = useRef(0);
   // Tracks the current gate state (open = speaking, closed = silent)

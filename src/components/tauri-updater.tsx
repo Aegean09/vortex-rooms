@@ -8,7 +8,7 @@ export function TauriUpdater() {
   const [status, setStatus] = useState<UpdateStatus>('idle');
   const [version, setVersion] = useState('');
   const [progress, setProgress] = useState(0);
-  const updateRef = useRef<{ downloadAndInstall: (cb?: (e: { event: string; data: { contentLength?: number; chunkLength?: number } }) => void) => Promise<void> } | null>(null);
+  const updateRef = useRef<{ downloadAndInstall: (onEvent?: (event: any) => void, options?: any) => Promise<void> } | null>(null);
   const checkedRef = useRef(false);
 
   useEffect(() => {

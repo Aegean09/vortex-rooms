@@ -7,7 +7,7 @@
 
 import type { OlmNamespace } from './types';
 
-type InboundSession = ReturnType<OlmNamespace['InboundGroupSession']>;
+type InboundSession = InstanceType<OlmNamespace['InboundGroupSession']>;
 
 export function createInboundGroupSession(Olm: OlmNamespace, sessionKey: string): InboundSession {
   const session = new Olm.InboundGroupSession();

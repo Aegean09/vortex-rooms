@@ -17,7 +17,7 @@ export const useRemoteVoiceActivity = (params: UseRemoteVoiceActivityParams): Re
   const { remoteStreams, threshold = 0.01 } = params;
   const [voiceActivity, setVoiceActivity] = useState<RemoteVoiceActivity>({});
   const analysersRef = useRef<Record<string, { analyser: AnalyserNode; audioContext: AudioContext; source: MediaStreamAudioSourceNode }>>({});
-  const animationFrameRef = useRef<number>();
+  const animationFrameRef = useRef<number | null>(null);
   const consecutiveActiveFramesRef = useRef<Record<string, number>>({});
   const consecutiveInactiveFramesRef = useRef<Record<string, number>>({});
 

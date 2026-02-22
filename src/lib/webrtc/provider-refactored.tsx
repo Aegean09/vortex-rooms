@@ -32,6 +32,8 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
   const { user } = useUser();
   const [isMuted, setIsMuted] = useState(false);
   const [isDeafened, setIsDeafened] = useState(false);
+  const [pushToTalk, setPushToTalk] = useState(false);
+  const [pushToTalkKey, setPushToTalkKey] = useState('Space');
   const [remoteStreams, setRemoteStreams] = useState<Record<string, MediaStream>>({});
   const [screenShareStream, setScreenShareStream] = useState<MediaStream | null>(null);
   const [presenterId, setPresenterId] = useState<string | null>(null);
@@ -106,6 +108,13 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
     }
   }, [isMuted, isDeafened, toggleMute]);
 
+  const bandwidthStats = {
+    totalBytesSent: 0,
+    totalBytesReceived: 0,
+    uploadRate: 0,
+    downloadRate: 0,
+  };
+
   return (
     <WebRTCContext.Provider
       value={{
@@ -122,6 +131,13 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
         presenterId,
         noiseGateThreshold,
         setNoiseGateThreshold,
+        pushToTalk,
+        setPushToTalk,
+        pushToTalkKey,
+        setPushToTalkKey,
+        remoteVoiceActivity: {},
+        localVoiceActivity: false,
+        bandwidthStats,
       }}
     >
       {children}

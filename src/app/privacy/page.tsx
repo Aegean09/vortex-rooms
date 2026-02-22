@@ -32,7 +32,8 @@ export default function PrivacyPage() {
             <ul className="list-disc pl-6 space-y-1.5">
               <li><strong>Anonymous authentication ID</strong> — A temporary Firebase anonymous user ID is generated per session. No email, phone number, or name is required.</li>
               <li><strong>Session metadata</strong> — Room ID, join/leave timestamps, sub-session assignments.</li>
-              <li><strong>Heartbeat data</strong> — A &quot;last seen&quot; timestamp updated every 15 seconds to detect disconnections.</li>
+              <li><strong>Heartbeat data</strong> — A &quot;last seen&quot; timestamp updated every 10 seconds to detect disconnections and remove stale users.</li>
+              <li><strong>WebRTC signaling data</strong> — Session descriptions (SDP) and ICE candidates stored temporarily in Firestore to establish peer-to-peer connections. Deleted when connections close.</li>
             </ul>
 
             <h3 className="text-foreground/80 font-medium mt-4 mb-2">2.2 User-Provided</h3>
@@ -44,8 +45,8 @@ export default function PrivacyPage() {
 
             <h3 className="text-foreground/80 font-medium mt-4 mb-2">2.3 Not Collected</h3>
             <ul className="list-disc pl-6 space-y-1.5">
-              <li>We do <strong>not</strong> collect IP addresses at the application level.</li>
-              <li>We do <strong>not</strong> use cookies, analytics, or third-party tracking.</li>
+              <li>We do <strong>not</strong> intentionally collect IP addresses; however, WebRTC ICE candidates (used for NAT traversal) may contain IP information and are stored temporarily in Firestore until the room is deleted.</li>
+              <li>We use a single <strong>functional cookie</strong> (<code className="text-xs">sidebar_state</code>) to remember your UI preference. It is not used for tracking and is not shared with third parties. We do <strong>not</strong> use analytics or third-party tracking.</li>
               <li>We do <strong>not</strong> collect email addresses, phone numbers, or real names.</li>
               <li>Voice data is transmitted <strong>peer-to-peer (WebRTC)</strong> and never passes through our servers.</li>
             </ul>
@@ -56,7 +57,8 @@ export default function PrivacyPage() {
             <ul className="list-disc pl-6 space-y-1.5">
               <li>To provide and operate the real-time chat service.</li>
               <li>To detect and remove stale/disconnected users from rooms.</li>
-              <li>To respond to abuse reports and legal requests.</li>
+              <li>To process abuse reports — reports (message context, description, report type) are stored in Firestore and reviewed within 24 hours.</li>
+              <li>To respond to legal requests.</li>
             </ul>
           </section>
 
@@ -64,8 +66,10 @@ export default function PrivacyPage() {
             <h2>4. Data Retention</h2>
             <p>Vortex is designed to be <strong>ephemeral</strong>:</p>
             <ul className="list-disc pl-6 space-y-1.5 mt-2">
-              <li>Room data (messages, user records) is deleted when the last participant leaves.</li>
+              <li>Room data (messages, user records, signaling data, encryption keys) is deleted when the last participant leaves.</li>
+              <li>As a safety measure, automated cleanup jobs remove any sessions older than 24 hours.</li>
               <li>Anonymous authentication IDs expire automatically.</li>
+              <li>Encryption keys are temporarily held in your browser&apos;s sessionStorage and cleared when you leave.</li>
               <li>We do not maintain long-term user profiles or message archives.</li>
             </ul>
           </section>
@@ -77,6 +81,7 @@ export default function PrivacyPage() {
               <li>Messages are encrypted on your device using the <strong>Megolm protocol</strong> before being sent.</li>
               <li>User display names and avatars are encrypted using <strong>AES-256-GCM</strong>.</li>
               <li>Encryption keys are exchanged using <strong>Curve25519 public-key cryptography</strong> and never stored in plaintext on the server.</li>
+              <li>Keys are stored in Firestore encrypted with recipients&apos; public keys, and temporarily in your browser&apos;s sessionStorage for decryption. Keys are cleared when you leave.</li>
               <li>We <strong>cannot</strong> read encrypted message content or user names.</li>
             </ul>
           </section>
@@ -89,7 +94,7 @@ export default function PrivacyPage() {
           <section>
             <h2>7. Third-Party Services</h2>
             <ul className="list-disc pl-6 space-y-1.5">
-              <li><strong>Firebase (Google)</strong> — Authentication, Firestore database, hosting. Subject to <a href="https://firebase.google.com/support/privacy" className="text-primary hover:underline" target="_blank" rel="noopener noreferrer">Firebase Privacy Policy</a>.</li>
+              <li><strong>Firebase (Google)</strong> — Anonymous authentication, Firestore database, and hosting. While the Firebase SDK includes analytics packages as transitive dependencies, we do <strong>not</strong> initialize or use Firebase Analytics. Subject to <a href="https://firebase.google.com/support/privacy" className="text-primary hover:underline" target="_blank" rel="noopener noreferrer">Firebase Privacy Policy</a>.</li>
               <li><strong>WebRTC (peer-to-peer)</strong> — Voice/video connections are direct between participants. Google STUN servers are used for NAT traversal only (no media routing).</li>
             </ul>
           </section>

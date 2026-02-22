@@ -33,7 +33,14 @@ import {
 } from 'lucide-react';
 import { useIsMobile } from '@/hooks/use-mobile';
 
-const ROADMAP_FEATURES = [
+type RoadmapStatus = 'done' | 'in_progress' | 'planned';
+type RoadmapFeature = {
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+  status: RoadmapStatus;
+};
+
+const ROADMAP_FEATURES: RoadmapFeature[] = [
   { icon: Lock, label: 'E2E Message Encryption', status: 'done' as const },
   { icon: Radio, label: 'SFU (Scalable Voice/Video)', status: 'planned' as const },
   { icon: Globe, label: 'TURN Server (NAT Traversal)', status: 'planned' as const },
@@ -50,7 +57,7 @@ const SCROLL_SPEED = 0.15;
 const ITEM_HEIGHT = 44;
 const VISIBLE_ITEMS = 1;
 
-function RoadmapItem({ feature }: { feature: (typeof ROADMAP_FEATURES)[number] }) {
+function RoadmapItem({ feature }: { feature: RoadmapFeature }) {
   return (
     <div className="flex items-center justify-between gap-2 rounded-lg border border-border/50 bg-muted/30 px-3 py-1.5 h-[36px] shrink-0">
       <div className="flex items-center gap-2.5">
