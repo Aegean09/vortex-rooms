@@ -15,8 +15,9 @@ import {
 import { Firestore } from 'firebase/firestore';
 import { User as FirebaseUser } from 'firebase/auth';
 
-const HEARTBEAT_INTERVAL_MS = 15_000;
-const STALE_THRESHOLD_MS = 45_000;
+const HEARTBEAT_INTERVAL_MS = 10_000;
+const STALE_THRESHOLD_MS = 25_000;
+const STALE_CLEANUP_INTERVAL_MS = 10_000;
 
 interface UseSessionPresenceParams {
   firestore: Firestore | null;
@@ -66,6 +67,12 @@ export const useSessionPresence = ({
     } catch {
       await deleteDoc(userDocRef).catch(() => {});
     }
+  }, [firestore, authUser, sessionId]);
+
+  const handleLeaveSync = useCallback(() => {
+    if (!firestore || !authUser) return;
+    const userDocRef = doc(firestore, 'sessions', sessionId, 'users', authUser.uid);
+    deleteDoc(userDocRef).catch(() => {});
   }, [firestore, authUser, sessionId]);
 
   useEffect(() => {
@@ -148,12 +155,22 @@ export const useSessionPresence = ({
         // ignore
       }
     };
-    const staleCleanupInterval = setInterval(cleanupStale, STALE_THRESHOLD_MS);
+    const staleCleanupInterval = setInterval(cleanupStale, STALE_CLEANUP_INTERVAL_MS);
+    setTimeout(cleanupStale, 3_000);
 
-    window.addEventListener('beforeunload', handleLeave);
+    const onBeforeUnload = () => handleLeaveSync();
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        handleLeaveSync();
+      }
+    };
+
+    window.addEventListener('beforeunload', onBeforeUnload);
+    document.addEventListener('visibilitychange', onVisibilityChange);
 
     return () => {
-      window.removeEventListener('beforeunload', handleLeave);
+      window.removeEventListener('beforeunload', onBeforeUnload);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
       if (heartbeatRef.current) {
         clearInterval(heartbeatRef.current);
         heartbeatRef.current = null;
@@ -161,7 +178,7 @@ export const useSessionPresence = ({
       clearInterval(staleCleanupInterval);
       handleLeave();
     };
-  }, [firestore, authUser, sessionId, username, handleLeave, e2eEnabled, avatarStyle, avatarSeed]);
+  }, [firestore, authUser, sessionId, username, handleLeave, handleLeaveSync, e2eEnabled, avatarStyle, avatarSeed]);
 
   return { handleLeave, hasJoined };
 };
