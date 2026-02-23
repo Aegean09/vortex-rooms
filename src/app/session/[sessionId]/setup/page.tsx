@@ -418,7 +418,7 @@ export default function SetupPage() {
                   )}
                 >
                   <Unlock className={cn('h-8 w-8', roomType === 'default' ? 'text-primary' : 'text-muted-foreground')} />
-                  <span className="font-medium text-sm">Unlocked</span>
+                  <span className="font-medium text-sm">Public</span>
                   <span className="text-[10px] text-muted-foreground text-center leading-tight">Anyone with link</span>
                 </button>
                 <button
@@ -432,8 +432,8 @@ export default function SetupPage() {
                   )}
                 >
                   <Lock className={cn('h-8 w-8', roomType === 'custom' ? 'text-primary' : 'text-muted-foreground')} />
-                  <span className="font-medium text-sm">Locked</span>
-                  <span className="text-[10px] text-muted-foreground text-center leading-tight">Password & max</span>
+                  <span className="font-medium text-sm">Private</span>
+                  <span className="text-[10px] text-muted-foreground text-center leading-tight">Password & User Limit</span>
                 </button>
               </div>
 
