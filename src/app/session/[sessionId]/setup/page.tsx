@@ -13,6 +13,9 @@ import { Label } from '@/components/ui/label';
 import { ArrowLeft, User as UserIcon, Mic, AlertCircle, Lock, Unlock, Users, Sparkles, ShieldCheck, Info, Eye, EyeOff } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { TermsContent } from '@/components/legal/terms-content';
+import { PrivacyContent } from '@/components/legal/privacy-content';
 import { useToast } from '@/hooks/use-toast';
 import { Progress } from '@/components/ui/progress';
 import { generateRandomSeed, AVATAR_STYLE } from '@/helpers/avatar-helpers';
@@ -44,6 +47,8 @@ export default function SetupPage() {
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [showRoomPassword, setShowRoomPassword] = useState(false);
   const [showCreatePassword, setShowCreatePassword] = useState(false);
+  const [showTermsModal, setShowTermsModal] = useState(false);
+  const [showPrivacyModal, setShowPrivacyModal] = useState(false);
   const { toast } = useToast();
 
   const localStreamRef = useRef<MediaStream | null>(null);
@@ -411,29 +416,33 @@ export default function SetupPage() {
                   type="button"
                   onClick={() => setRoomType('default')}
                   className={cn(
-                    'flex flex-col items-center justify-center gap-2 p-4 rounded-xl border-2 transition-all duration-200 w-[130px]',
+                    'flex flex-col items-center justify-center gap-1 px-4 rounded-xl border-2 transition-all duration-200 flex-1 h-[70px]',
                     roomType === 'default'
                       ? 'border-primary bg-primary/10'
                       : 'border-border hover:border-primary/50 hover:bg-muted/30'
                   )}
                 >
-                  <Unlock className={cn('h-8 w-8', roomType === 'default' ? 'text-primary' : 'text-muted-foreground')} />
-                  <span className="font-medium text-sm">Unlocked</span>
-                  <span className="text-[10px] text-muted-foreground text-center leading-tight">Anyone with link</span>
+                  <div className="flex flex-row items-center gap-2">
+                    <Unlock className={cn('h-5 w-5 flex-shrink-0', roomType === 'default' ? 'text-primary' : 'text-muted-foreground')} />
+                    <span className="font-medium text-sm">Public</span>
+                  </div>
+                  <span className="text-[10px] text-muted-foreground leading-tight text-center">Anyone with link</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => setRoomType('custom')}
                   className={cn(
-                    'flex flex-col items-center justify-center gap-2 p-4 rounded-xl border-2 transition-all duration-200 w-[130px]',
+                    'flex flex-col items-center justify-center gap-1 px-4 rounded-xl border-2 transition-all duration-200 flex-1 h-[70px]',
                     roomType === 'custom'
                       ? 'border-primary bg-primary/10'
                       : 'border-border hover:border-primary/50 hover:bg-muted/30'
                   )}
                 >
-                  <Lock className={cn('h-8 w-8', roomType === 'custom' ? 'text-primary' : 'text-muted-foreground')} />
-                  <span className="font-medium text-sm">Locked</span>
-                  <span className="text-[10px] text-muted-foreground text-center leading-tight">Password & max</span>
+                  <div className="flex flex-row items-center gap-2">
+                    <Lock className={cn('h-5 w-5 flex-shrink-0', roomType === 'custom' ? 'text-primary' : 'text-muted-foreground')} />
+                    <span className="font-medium text-sm">Private</span>
+                  </div>
+                  <span className="text-[10px] text-muted-foreground leading-tight text-center">Password & User Limit</span>
                 </button>
               </div>
 
@@ -559,9 +568,27 @@ export default function SetupPage() {
                 </label>
                 <p className="text-[11px] text-muted-foreground leading-snug">
                   By joining, you agree to the{' '}
-                  <a href="/terms" target="_blank" className="text-primary hover:underline">Terms of Service</a>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      setShowTermsModal(true);
+                    }}
+                    className="text-primary hover:underline"
+                  >
+                    Terms of Service
+                  </button>
                   {' '}and{' '}
-                  <a href="/privacy" target="_blank" className="text-primary hover:underline">Privacy Policy</a>.
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      setShowPrivacyModal(true);
+                    }}
+                    className="text-primary hover:underline"
+                  >
+                    Privacy Policy
+                  </button>.
                 </p>
               </div>
             </div>
@@ -588,6 +615,32 @@ export default function SetupPage() {
           </Button>
         </CardFooter>
       </Card>
+
+      {/* Terms Modal */}
+      <Dialog open={showTermsModal} onOpenChange={setShowTermsModal}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Terms of Service</DialogTitle>
+            <DialogDescription>Last updated: February 23, 2026</DialogDescription>
+          </DialogHeader>
+          <TermsContent />
+        </DialogContent>
+      </Dialog>
+
+      {/* Privacy Modal */}
+      <Dialog open={showPrivacyModal} onOpenChange={setShowPrivacyModal}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Privacy Policy</DialogTitle>
+            <DialogDescription>
+              Last updated: February 23, 2026
+              <br />
+              This policy also serves as an information notice under Turkish Personal Data Protection Law (KVKK).
+            </DialogDescription>
+          </DialogHeader>
+          <PrivacyContent />
+        </DialogContent>
+      </Dialog>
     </main>
   );
 }
