@@ -31,9 +31,9 @@ export default function HomePage() {
   };
 
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center p-8">
+    <main className="flex min-h-[100svh] flex-col items-center justify-center px-4 py-8 sm:p-8">
       <div className="absolute inset-0 -z-10 h-full w-full bg-background bg-[radial-gradient(#2f2f33_1px,transparent_1px)] [background-size:32px_32px]"></div>
-      <Card className="w-full max-w-md shadow-2xl bg-card/80 backdrop-blur-sm border-primary/20">
+      <Card className="mb-28 w-full max-w-md shadow-2xl bg-card/80 backdrop-blur-sm border-primary/20 sm:mb-0">
         <CardHeader className="text-center">
           <div className="flex justify-center items-center mb-4">
             <div className="p-3 rounded-full bg-primary/20 border border-primary/50">
@@ -71,14 +71,12 @@ export default function HomePage() {
         </CardContent>
       </Card>
 
-      <footer className="absolute bottom-0 left-0 right-0 flex flex-col items-center pb-4">
+      <footer className="fixed bottom-[calc(env(safe-area-inset-bottom)+0.75rem)] left-0 right-0 flex flex-col items-center">
         <RoadmapPopover />
         <div className="mt-3 flex items-center gap-3 text-xs text-muted-foreground">
           <a href="/terms" className="hover:text-foreground transition-colors">Terms</a>
           <span>·</span>
           <a href="/privacy" className="hover:text-foreground transition-colors">Privacy</a>
-          <span>·</span>
-          <a href="mailto:abuse.vortex.rooms@gmail.com" className="hover:text-foreground transition-colors">Report Abuse</a>
         </div>
         <p className="mt-2 text-center text-xs text-muted-foreground">© 2026 Ege Durmaz. All rights reserved.</p>
       </footer>

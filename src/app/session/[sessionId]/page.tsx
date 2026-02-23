@@ -287,11 +287,11 @@ export default function SessionPage() {
             </SheetTrigger>
             <SheetContent side="left" className="w-[300px] p-0 flex flex-col bg-card">
               <SheetHeader className="flex flex-col gap-3 p-4 border-b">
-                <div className="flex items-center gap-2">
-                  <div className="p-1.5 rounded-md bg-primary/15">
-                    <Sparkles className="h-4 w-4 text-primary" />
+                <div className="flex items-center justify-center gap-2 w-full">
+                  <div className="p-2 rounded-md bg-primary/15">
+                    <Sparkles className="h-5 w-5 text-primary" />
                   </div>
-                  <span className="text-base font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-primary to-accent">Vortex</span>
+                  <span className="text-xl font-bold tracking-tight text-primary">Vortex</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <Users className="h-4 w-4 text-muted-foreground" />
@@ -312,12 +312,12 @@ export default function SessionPage() {
         </div>
 
         <div className="flex flex-1 gap-4 min-h-0">
-          <aside className="w-[300px] hidden md:flex flex-col gap-4">
-            <div className="flex items-center gap-2 px-1">
-              <div className="p-1.5 rounded-md bg-primary/15">
-                <Sparkles className="h-4 w-4 text-primary" />
+          <aside className="w-[300px] hidden md:flex flex-col gap-2">
+            <div className="flex items-center justify-center gap-2 px-1">
+              <div className="p-2 rounded-md bg-primary/15">
+                <Sparkles className="h-5 w-5 text-primary" />
               </div>
-              <span className="text-base font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-primary to-accent">Vortex</span>
+              <span className="text-xl font-bold tracking-tight text-primary">Vortex</span>
             </div>
             <ShareLink />
             <SubSessionList

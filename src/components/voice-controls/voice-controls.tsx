@@ -69,6 +69,7 @@ export function VoiceControls({ currentUser, onAvatarChange }: VoiceControlsProp
   const [isRecordingKey, setIsRecordingKey] = useState(false);
   const [isAvatarPickerOpen, setIsAvatarPickerOpen] = useState(false);
   const [avatarOptions, setAvatarOptions] = useState<string[]>([]);
+  const [isCoarsePointer, setIsCoarsePointer] = useState(false);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const animationFrameRef = useRef<number | undefined>(undefined);
   // Hysteresis state for the local voice-activity preview
@@ -78,6 +79,15 @@ export function VoiceControls({ currentUser, onAvatarChange }: VoiceControlsProp
   const router = useRouter();
   const { toast } = useToast();
   const isMobile = useIsMobile();
+  const showBandwidthIndicator = !isMobile && !isCoarsePointer;
+
+  useEffect(() => {
+    const pointerQuery = window.matchMedia('(pointer: coarse)');
+    const updatePointerType = () => setIsCoarsePointer(pointerQuery.matches);
+    updatePointerType();
+    pointerQuery.addEventListener('change', updatePointerType);
+    return () => pointerQuery.removeEventListener('change', updatePointerType);
+  }, []);
 
   useEffect(() => {
     const streamToAnalyze = rawStream || localStream;
@@ -260,14 +270,14 @@ export function VoiceControls({ currentUser, onAvatarChange }: VoiceControlsProp
               <div>
                 <p className="font-semibold text-sm">{currentUser.name}</p>
                 <p className={`text-xs ${hasMicPermission ? 'text-green-400' : 'text-red-400'}`}>
-                  {hasMicPermission ? 'Voice Connected' : 'No Mic Access'}
+                  {hasMicPermission ? 'Connected' : 'No Mic Access'}
                 </p>
               </div>
             </>
           )}
         </div>
         <div className="flex items-center gap-2">
-          <BandwidthIndicator stats={bandwidthStats} />
+          {showBandwidthIndicator && <BandwidthIndicator stats={bandwidthStats} />}
           <Tooltip>
             <TooltipTrigger asChild>
               <Button variant={isMuted ? 'destructive' : 'secondary'} size="icon" onClick={handleToggleMute} disabled={!localStream}>

@@ -84,7 +84,7 @@ export function ReportDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-[548px]">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Flag className="h-5 w-5 text-destructive" />
@@ -93,6 +93,10 @@ export function ReportDialog({
           <DialogDescription>
             Your report will be reviewed. We take abuse seriously and respond within 24 hours.
           </DialogDescription>
+          <p className="text-xs text-muted-foreground">
+            By submitting this report, the selected messages and related metadata may be shared in a readable format
+            with our moderation team to investigate abuse, as described in our Privacy Policy.
+          </p>
         </DialogHeader>
 
         {messages.length > 0 && (
