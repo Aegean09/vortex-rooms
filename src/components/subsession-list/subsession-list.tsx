@@ -17,6 +17,9 @@ import { useWebRTC } from '@/lib/webrtc/provider';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useToast } from '@/hooks/use-toast';
 import { MAX_USERS_PER_SUB_SESSION, SUBSESSION_NAME_MAX_LENGTH } from '@/constants/common';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Slider } from '@/components/ui/slider';
+import { REMOTE_USER_VOLUME_MAX_PERCENT } from '@/config/app-config';
 
 interface SubSessionListProps {
   subSessions: SubSession[];
@@ -37,7 +40,7 @@ export function SubSessionList({ subSessions, users, currentUser, onSubSessionCh
   const firestore = useFirestore();
   const params = useParams();
   const sessionId = params.sessionId as string;
-  const { remoteVoiceActivity, localVoiceActivity, isMuted, isDeafened } = useWebRTC();
+  const { remoteVoiceActivity, localVoiceActivity, isMuted, isDeafened, remoteVolumes, setRemoteVolume } = useWebRTC();
   const { toast } = useToast();
 
   useEffect(() => {
@@ -219,6 +222,8 @@ export function SubSessionList({ subSessions, users, currentUser, onSubSessionCh
                     const userIsMuted = isCurrentUser ? isMuted : user.isMuted || false;
                     const userIsDeafened = isCurrentUser ? isDeafened : false;
 
+                    const remoteVolumePct = Math.round((remoteVolumes[user.id] ?? 1) * 100);
+
                     return (
                       <li key={user.id} className="flex items-center gap-3">
                         <div className="relative">
@@ -233,12 +238,65 @@ export function SubSessionList({ subSessions, users, currentUser, onSubSessionCh
                             )}
                           />
                         </div>
-                        <span className="font-medium text-sm truncate flex-1 flex items-center gap-1.5">
-                          {user.name} {isCurrentUser ? '(You)' : ''}
+                        <div className="font-medium text-sm truncate flex-1 flex items-center gap-1.5 min-w-0">
+                          {isCurrentUser ? (
+                            <span className="truncate">{user.name} (You)</span>
+                          ) : (
+                            <>
+                              <span className="truncate">{user.name}</span>
+                              <Popover>
+                                <TooltipProvider>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <PopoverTrigger asChild>
+                                        <button
+                                          type="button"
+                                          className="inline-flex h-5 w-5 items-center justify-center rounded-sm text-muted-foreground hover:text-primary hover:bg-accent/50"
+                                          aria-label={`${user.name} volume settings`}
+                                        >
+                                          <Volume2 className="h-3.5 w-3.5" />
+                                        </button>
+                                      </PopoverTrigger>
+                                    </TooltipTrigger>
+                                    <TooltipContent side="top" className="text-xs">
+                                      <p>Adjust user volume</p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
+                                <PopoverContent align="start" className="w-56 p-3">
+                                  <div className="space-y-2">
+                                    <div className="flex items-center justify-between">
+                                      <span className="text-xs text-muted-foreground">User Volume</span>
+                                      <span className="text-xs font-medium">{remoteVolumePct}%</span>
+                                    </div>
+                                    <Slider
+                                      min={0}
+                                      max={REMOTE_USER_VOLUME_MAX_PERCENT}
+                                      step={1}
+                                      value={[remoteVolumePct]}
+                                      onValueChange={(values) => {
+                                        const value = values[0] ?? 100;
+                                        setRemoteVolume(user.id, value / 100);
+                                      }}
+                                    />
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="sm"
+                                      className="h-7 w-full text-xs"
+                                      onClick={() => setRemoteVolume(user.id, 1)}
+                                    >
+                                      Reset to 100%
+                                    </Button>
+                                  </div>
+                                </PopoverContent>
+                              </Popover>
+                            </>
+                          )}
                           {user.isScreenSharing && (
                             <ScreenShare className="h-3 w-3 text-primary flex-shrink-0" />
                           )}
-                        </span>
+                        </div>
                         {isSpeaking && !userIsMuted && !userIsDeafened && (
                           <div>
                             <span className="text-[10px] text-muted-foreground">Speaking</span>

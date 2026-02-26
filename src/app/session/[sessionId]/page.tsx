@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useCallback, useState, useEffect } from 'react';
+import { useMemo, useCallback, useState, useEffect, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import { ChatArea } from '@/components/chat-area/chat-area';
 import { SubSessionList } from '@/components/subsession-list/subsession-list';
@@ -36,6 +36,7 @@ import { useFirestore } from '@/firebase';
 import { useE2ESession } from '@/lib/e2e';
 import { encryptMetadata, decryptMetadata } from '@/lib/e2e/metadata-crypto';
 import { useToast } from '@/hooks/use-toast';
+import { USERNAME_DECRYPTION_ENABLED } from '@/config/app-config';
 
 const VoiceControls = dynamic(
   () =>
@@ -141,8 +142,19 @@ export default function SessionPage() {
   // Write encrypted name/avatar to Firestore once metadataKey is available.
   // This also overwrites any brief plaintext that the presence hook may have written.
   useEffect(() => {
-    if (!e2eEnabled || !e2eMetadataKey || !firestore || !authUser || !username) return;
+    if (!e2eEnabled || !firestore || !authUser || !username) return;
     const userDocRef = doc(firestore, 'sessions', sessionId, 'users', authUser.uid);
+
+    if (!USERNAME_DECRYPTION_ENABLED) {
+      updateDoc(userDocRef, {
+        name: username,
+        encryptedName: null,
+      }).catch(() => {});
+      return;
+    }
+
+    if (!e2eMetadataKey || !e2e.isReady) return;
+
     (async () => {
       const encName = await encryptMetadata(e2eMetadataKey, username);
       const encSeed = avatarSeed ? await encryptMetadata(e2eMetadataKey, avatarSeed) : null;
@@ -153,25 +165,99 @@ export default function SessionPage() {
         ...(avatarStyle ? { avatarStyle: null } : {}),
       });
     })().catch(() => {});
-  }, [e2eEnabled, e2eMetadataKey, firestore, authUser, username, avatarSeed, avatarStyle, sessionId]);
+  }, [e2eEnabled, e2eMetadataKey, e2e.isReady, firestore, authUser, username, avatarSeed, avatarStyle, sessionId]);
 
   // Decrypt user names/avatars client-side when metadataKey is available.
   const [decryptedUsers, setDecryptedUsers] = useState<User[] | null>(null);
+  const decryptedNameCacheRef = useRef<Record<string, string>>({});
+  const decryptedAvatarSeedCacheRef = useRef<Record<string, string>>({});
+  const warnedNameDecryptRef = useRef<Set<string>>(new Set());
+  const warnedAvatarDecryptRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (!rawUsers) return;
+    const currentIds = new Set(rawUsers.map((u) => u.id));
+
+    Object.keys(decryptedNameCacheRef.current).forEach((id) => {
+      if (!currentIds.has(id)) delete decryptedNameCacheRef.current[id];
+    });
+    Object.keys(decryptedAvatarSeedCacheRef.current).forEach((id) => {
+      if (!currentIds.has(id)) delete decryptedAvatarSeedCacheRef.current[id];
+    });
+    Array.from(warnedNameDecryptRef.current).forEach((id) => {
+      if (!currentIds.has(id)) warnedNameDecryptRef.current.delete(id);
+    });
+    Array.from(warnedAvatarDecryptRef.current).forEach((id) => {
+      if (!currentIds.has(id)) warnedAvatarDecryptRef.current.delete(id);
+    });
+  }, [rawUsers]);
 
   useEffect(() => {
     if (!rawUsers) { setDecryptedUsers(null); return; }
-    if (!e2eMetadataKey) { setDecryptedUsers(rawUsers); return; }
+    if (!e2eMetadataKey) {
+      setDecryptedUsers(
+        rawUsers.map((u) => ({
+          ...u,
+          name: USERNAME_DECRYPTION_ENABLED && u.name === 'Encrypted'
+            ? (decryptedNameCacheRef.current[u.id] ?? u.name)
+            : u.name,
+          avatarSeed: u.avatarSeed ?? decryptedAvatarSeedCacheRef.current[u.id],
+        })),
+      );
+      return;
+    }
 
     let cancelled = false;
     (async () => {
       const resolved = await Promise.all(
         rawUsers.map(async (u) => {
-          const name = u.encryptedName
-            ? (await decryptMetadata(e2eMetadataKey, u.encryptedName)) ?? u.name
+          let decryptedName: string | null = null;
+          let decryptedSeed: string | null = null;
+
+          if (USERNAME_DECRYPTION_ENABLED) {
+            if (u.encryptedName) {
+              decryptedName = await decryptMetadata(e2eMetadataKey, u.encryptedName);
+              if (decryptedName == null) {
+                if (!warnedNameDecryptRef.current.has(u.id)) {
+                  warnedNameDecryptRef.current.add(u.id);
+                  console.warn('[E2E][metadata] failed to decrypt user name', {
+                    userId: u.id,
+                    hasEncryptedName: true,
+                  });
+                }
+              } else {
+                warnedNameDecryptRef.current.delete(u.id);
+                decryptedNameCacheRef.current[u.id] = decryptedName;
+              }
+            } else if (u.name && u.name !== 'Encrypted') {
+              decryptedNameCacheRef.current[u.id] = u.name;
+            }
+          }
+
+          if (u.encryptedAvatarSeed) {
+            decryptedSeed = await decryptMetadata(e2eMetadataKey, u.encryptedAvatarSeed);
+            if (decryptedSeed == null) {
+              if (!warnedAvatarDecryptRef.current.has(u.id)) {
+                warnedAvatarDecryptRef.current.add(u.id);
+                console.warn('[E2E][metadata] failed to decrypt avatar seed', {
+                  userId: u.id,
+                  hasEncryptedAvatarSeed: true,
+                });
+              }
+            } else {
+              warnedAvatarDecryptRef.current.delete(u.id);
+              decryptedAvatarSeedCacheRef.current[u.id] = decryptedSeed;
+            }
+          } else if (u.avatarSeed) {
+            decryptedAvatarSeedCacheRef.current[u.id] = u.avatarSeed;
+          }
+
+          const name = USERNAME_DECRYPTION_ENABLED
+            ? (decryptedName
+              ?? (u.name !== 'Encrypted' ? u.name : (decryptedNameCacheRef.current[u.id] ?? u.name)))
             : u.name;
-          const seed = u.encryptedAvatarSeed
-            ? (await decryptMetadata(e2eMetadataKey, u.encryptedAvatarSeed)) ?? u.avatarSeed
-            : u.avatarSeed;
+          const seed = decryptedSeed
+            ?? (u.avatarSeed ?? decryptedAvatarSeedCacheRef.current[u.id]);
           return { ...u, name, avatarSeed: seed };
         }),
       );

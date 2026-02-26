@@ -26,6 +26,9 @@ import {
 } from './helpers/audio-helpers';
 import { percentToRms } from '@/helpers/audio-helpers';
 import { applyScreenShareBitrateCap, applyScreenShareCapsToAll } from './services/screen-share-service';
+import { REMOTE_USER_VOLUME_MAX_PERCENT } from '@/config/app-config';
+
+const MIC_PERMISSION_STORAGE_KEY = 'vortex-mic-permission-granted-v1';
 
 export interface BandwidthStats {
   totalBytesSent: number;
@@ -58,6 +61,8 @@ interface WebRTCContextType {
   setNoiseSuppressionIntensity: (intensity: number) => void;
   remoteVoiceActivity: Record<string, { isActive: boolean; level: number }>;
   localVoiceActivity: boolean;
+  remoteVolumes: Record<string, number>;
+  setRemoteVolume: (peerId: string, volume: number) => void;
   audioInputDevices: MediaDeviceInfo[];
   selectedDeviceId: string;
   setSelectedDeviceId: (deviceId: string) => void;
@@ -87,6 +92,12 @@ interface PeerConnectionWithUnsubscribe extends RTCPeerConnection {
   unsubscribeCandidates?: Unsubscribe;
 }
 
+interface RemoteAudioNodes {
+  source: MediaStreamAudioSourceNode;
+  gainNode: GainNode;
+  streamId: string;
+}
+
 export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
   children,
   firestore,
@@ -106,7 +117,7 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
   const [screenShareStream, setScreenShareStream] = useState<MediaStream | null>(null);
   const screenShareTrackRef = useRef<MediaStreamTrack | null>(null);
   const [presenterId, setPresenterId] = useState<string | null>(null);
-  const [noiseGateThreshold, setNoiseGateThreshold] = useState<number>(() => percentToRms(70));
+  const [noiseGateThreshold, setNoiseGateThreshold] = useState<number>(() => percentToRms(55));
   const [pushToTalk, setPushToTalk] = useState<boolean>(false);
   const [pushToTalkKey, setPushToTalkKey] = useState<string>('Space');
   const [isPressingPushToTalkKey, setIsPressingPushToTalkKey] = useState<boolean>(false);
@@ -115,6 +126,11 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
   const [noiseSuppressionIntensity, setNoiseSuppressionIntensity] = useState<number>(1);
   const [audioInputDevices, setAudioInputDevices] = useState<MediaDeviceInfo[]>([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState<string>('');
+  const [remoteVolumes, setRemoteVolumes] = useState<Record<string, number>>({});
+  const remoteAudioNodesRef = useRef<Record<string, RemoteAudioNodes>>({});
+  const remoteAudioElementsRef = useRef<Record<string, HTMLAudioElement | null>>({});
+  const playbackAudioContextRef = useRef<AudioContext | null>(null);
+  const [isPlaybackContextRunning, setIsPlaybackContextRunning] = useState(false);
 
   const remoteVoiceActivity = useRemoteVoiceActivity({
     remoteStreams,
@@ -258,6 +274,27 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
       }
       return newStreams;
     });
+    setRemoteVolumes(prev => {
+      if (!(peerId in prev)) return prev;
+      const next = { ...prev };
+      delete next[peerId];
+      return next;
+    });
+    delete remoteAudioElementsRef.current[peerId];
+    const remoteNodes = remoteAudioNodesRef.current[peerId];
+    if (remoteNodes) {
+      try {
+        remoteNodes.source.disconnect();
+      } catch {
+        // ignore
+      }
+      try {
+        remoteNodes.gainNode.disconnect();
+      } catch {
+        // ignore
+      }
+      delete remoteAudioNodesRef.current[peerId];
+    }
 
     // Clear screen share stream if this peer was the presenter
     setPresenterId(prev => {
@@ -288,6 +325,96 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
       }
     }
   }, [firestore, sessionId, localPeerId]);
+
+  const setRemoteVolume = useCallback((peerId: string, volume: number) => {
+    const maxRemoteVolume = REMOTE_USER_VOLUME_MAX_PERCENT / 100;
+    const clamped = Math.max(0, Math.min(maxRemoteVolume, volume));
+    setRemoteVolumes((prev) => {
+      if (prev[peerId] === clamped) return prev;
+      return { ...prev, [peerId]: clamped };
+    });
+  }, []);
+
+  const getOrCreatePlaybackAudioContext = useCallback((): AudioContext => {
+    let ctx = playbackAudioContextRef.current;
+    if (!ctx) {
+      ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      playbackAudioContextRef.current = ctx;
+    }
+    return ctx;
+  }, []);
+
+  const ensureAudioContextRunning = useCallback(async (audioContext: AudioContext): Promise<boolean> => {
+    if (audioContext.state === 'suspended') {
+      try {
+        await audioContext.resume();
+      } catch {
+        // ignore
+      }
+    }
+    return audioContext.state === 'running';
+  }, []);
+
+  const resumePlaybackContext = useCallback(async () => {
+    const ctx = getOrCreatePlaybackAudioContext();
+    const running = await ensureAudioContextRunning(ctx);
+    setIsPlaybackContextRunning(running);
+  }, [getOrCreatePlaybackAudioContext, ensureAudioContextRunning]);
+
+  const ensureRemoteAudioNode = useCallback((peerId: string, stream: MediaStream) => {
+    const ctx = getOrCreatePlaybackAudioContext();
+    let nodes = remoteAudioNodesRef.current[peerId] as RemoteAudioNodes | undefined;
+    if (nodes && nodes.streamId !== stream.id) {
+      try {
+        nodes.source.disconnect();
+      } catch {
+        // ignore
+      }
+      try {
+        nodes.gainNode.disconnect();
+      } catch {
+        // ignore
+      }
+      delete remoteAudioNodesRef.current[peerId];
+      nodes = undefined;
+    }
+
+    if (!nodes) {
+      const source = ctx.createMediaStreamSource(stream);
+      const gainNode = ctx.createGain();
+      source.connect(gainNode);
+      gainNode.connect(ctx.destination);
+      nodes = { source, gainNode, streamId: stream.id };
+      remoteAudioNodesRef.current[peerId] = nodes;
+    }
+  }, [getOrCreatePlaybackAudioContext]);
+
+  const applyRemoteAudioState = useCallback(() => {
+    const contextRunning = isPlaybackContextRunning;
+    const ctx = playbackAudioContextRef.current;
+
+    Object.entries(remoteAudioElementsRef.current).forEach(([peerId, audio]) => {
+      if (!audio) return;
+      const requestedVolume = remoteVolumes[peerId] ?? 1;
+      if (contextRunning) {
+        audio.muted = true;
+        audio.volume = 1;
+      } else {
+        audio.muted = isDeafened;
+        audio.volume = isDeafened ? 0 : Math.max(0, Math.min(1, requestedVolume));
+      }
+    });
+
+    if (!ctx) return;
+    Object.entries(remoteAudioNodesRef.current).forEach(([peerId, nodes]) => {
+      const requestedVolume = remoteVolumes[peerId] ?? 1;
+      const maxRemoteVolume = REMOTE_USER_VOLUME_MAX_PERCENT / 100;
+      const targetVolume = contextRunning && !isDeafened
+        ? Math.max(0, Math.min(maxRemoteVolume, requestedVolume))
+        : 0;
+      nodes.gainNode.gain.setTargetAtTime(targetVolume, ctx.currentTime, 0.01);
+    });
+  }, [isPlaybackContextRunning, isDeafened, remoteVolumes]);
 
   usePushToTalk({
     localStream,
@@ -423,6 +550,11 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
         audio: audioConstraints,
         video: false,
       });
+      try {
+        localStorage.setItem(MIC_PERMISSION_STORAGE_KEY, 'true');
+      } catch {
+        // ignore
+      }
       return stream;
     } catch {
       return null;
@@ -532,8 +664,8 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
 
       const shouldMute = isMutedRef.current || (pushToTalkRef.current && !isPressingPushToTalkKeyRef.current);
       const threshold     = noiseGateThresholdRef.current;
-      const openThreshold  = threshold * 1.3;  // higher bar to open  → reduces false triggers
-      const closeThreshold = threshold * 0.65; // lower bar to close  → prevents chattering
+      const openThreshold  = threshold * 1.1;  // lower bar so low-volume mics can open gate
+      const closeThreshold = threshold * 0.8;  // keep hysteresis but less aggressive close
 
       const now = Date.now();
       const ctx = nodes.audioContext!;
@@ -599,7 +731,7 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
         enabled: noiseSuppressionEnabled,
         intensity: noiseSuppressionIntensity,
       }
-    ).then((nodes) => {
+    ).then(async (nodes) => {
       if (!isMounted) {
         cleanupNoiseSuppressionNodes(nodes);
         return;
@@ -607,8 +739,17 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
 
       audioNodesRef.current = nodes;
 
-      if (nodes.audioContext.state === 'suspended') {
-        nodes.audioContext.resume().catch(() => {});
+      const isRunning = await ensureAudioContextRunning(nodes.audioContext);
+      if (!isMounted) {
+        cleanupNoiseSuppressionNodes(nodes);
+        return;
+      }
+
+      if (!isRunning) {
+        cleanupNoiseSuppressionNodes(nodes);
+        audioNodesRef.current = null;
+        setLocalStream(rawStream);
+        return;
       }
 
       setLocalStream(nodes.destination.stream);
@@ -638,8 +779,20 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
       };
 
       audioNodesRef.current = nodes;
-      setLocalStream(destination.stream);
-      startNoiseGateLoop(nodes);
+      ensureAudioContextRunning(audioContext).then((isRunning) => {
+        if (!isMounted) {
+          cleanupNoiseSuppressionNodes(nodes);
+          return;
+        }
+        if (!isRunning) {
+          cleanupNoiseSuppressionNodes(nodes);
+          audioNodesRef.current = null;
+          setLocalStream(rawStream);
+          return;
+        }
+        setLocalStream(destination.stream);
+        startNoiseGateLoop(nodes);
+      });
     });
 
     return () => {
@@ -653,7 +806,7 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
         audioNodesRef.current = null;
       }
     };
-  }, [rawStream, startNoiseGateLoop]);
+  }, [rawStream, startNoiseGateLoop, ensureAudioContextRunning]);
 
   const hasAutoEnabledNoiseSuppression = useRef(false);
 
@@ -738,12 +891,74 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
       Object.keys(peerConnections.current).forEach(peerId => {
         cleanupConnection(peerId);
       });
+      Object.entries(remoteAudioNodesRef.current).forEach(([peerId, nodes]) => {
+        try {
+          nodes.source.disconnect();
+        } catch {
+          // ignore
+        }
+        try {
+          nodes.gainNode.disconnect();
+        } catch {
+          // ignore
+        }
+        delete remoteAudioNodesRef.current[peerId];
+      });
+      const playbackContext = playbackAudioContextRef.current;
+      if (playbackContext && playbackContext.state !== 'closed') {
+        playbackContext.close().catch(() => {});
+      }
+      playbackAudioContextRef.current = null;
+      setIsPlaybackContextRunning(false);
     };
 
     return () => {
       cleanupAll();
     };
   }, [cleanupConnection]);
+
+  useEffect(() => {
+    Object.entries(remoteStreams).forEach(([peerId, stream]) => {
+      ensureRemoteAudioNode(peerId, stream);
+    });
+    Object.keys(remoteAudioNodesRef.current).forEach((peerId) => {
+      if (!remoteStreams[peerId]) {
+        const nodes = remoteAudioNodesRef.current[peerId];
+        if (!nodes) return;
+        try {
+          nodes.source.disconnect();
+        } catch {
+          // ignore
+        }
+        try {
+          nodes.gainNode.disconnect();
+        } catch {
+          // ignore
+        }
+        delete remoteAudioNodesRef.current[peerId];
+      }
+    });
+  }, [remoteStreams, ensureRemoteAudioNode]);
+
+  useEffect(() => {
+    applyRemoteAudioState();
+  }, [applyRemoteAudioState]);
+
+  useEffect(() => {
+    const onUserInteraction = () => {
+      resumePlaybackContext().catch(() => {});
+    };
+
+    window.addEventListener('pointerdown', onUserInteraction, { passive: true });
+    window.addEventListener('touchstart', onUserInteraction, { passive: true });
+    window.addEventListener('keydown', onUserInteraction);
+
+    return () => {
+      window.removeEventListener('pointerdown', onUserInteraction);
+      window.removeEventListener('touchstart', onUserInteraction);
+      window.removeEventListener('keydown', onUserInteraction);
+    };
+  }, [resumePlaybackContext]);
 
   useEffect(() => {
     if (!firestore || !localStream || !user || !users || !subSessionId) return;
@@ -888,6 +1103,8 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
       setPushToTalkKey,
       remoteVoiceActivity,
       localVoiceActivity,
+      remoteVolumes,
+      setRemoteVolume,
       noiseSuppressionEnabled,
       setNoiseSuppressionEnabled,
       noiseSuppressionIntensity,
@@ -903,11 +1120,16 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
         <audio
           key={peerId}
           ref={audio => {
-            if (audio && audio.srcObject !== stream) {
-              audio.srcObject = stream;
-            }
             if (audio) {
-              audio.muted = isDeafened;
+              remoteAudioElementsRef.current[peerId] = audio;
+              if (audio.srcObject !== stream) {
+                audio.srcObject = stream;
+              }
+              ensureRemoteAudioNode(peerId, stream);
+              applyRemoteAudioState();
+              audio.play().catch(() => {});
+            } else {
+              delete remoteAudioElementsRef.current[peerId];
             }
           }}
           autoPlay

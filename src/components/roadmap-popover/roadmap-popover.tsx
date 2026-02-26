@@ -12,6 +12,7 @@ import {
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -185,7 +186,9 @@ function MobileRoadmap() {
             <Map className="h-4 w-4 text-primary" />
             Roadmap
           </DialogTitle>
-          <p className="text-xs text-muted-foreground font-normal">What&apos;s next?</p>
+          <DialogDescription className="text-xs text-muted-foreground font-normal">
+            What&apos;s next?
+          </DialogDescription>
         </DialogHeader>
         <div className="space-y-2">
           {ROADMAP_FEATURES.map((feature) => (
