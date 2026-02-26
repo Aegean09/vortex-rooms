@@ -10,15 +10,13 @@ import {
   deleteDoc,
   increment,
   serverTimestamp,
-  Timestamp,
 } from 'firebase/firestore';
 import { Firestore } from 'firebase/firestore';
 import { User as FirebaseUser } from 'firebase/auth';
 import { callDeleteSessionCompletely } from '@/firebase/session-callables';
+import { USERNAME_DECRYPTION_ENABLED } from '@/config/app-config';
 
 const HEARTBEAT_INTERVAL_MS = 10_000;
-const STALE_THRESHOLD_MS = 25_000;
-const STALE_CLEANUP_INTERVAL_MS = 10_000;
 
 interface UseSessionPresenceParams {
   firestore: Firestore | null;
@@ -92,12 +90,15 @@ export const useSessionPresence = ({
       const existingDoc = await getDoc(userDocRef);
       const userData: Record<string, unknown> = {
         id: authUser.uid,
-        name: e2eEnabled ? 'Encrypted' : username,
+        name: e2eEnabled && USERNAME_DECRYPTION_ENABLED ? 'Encrypted' : username,
         sessionId,
         isScreenSharing: false,
         isMuted: false,
         lastSeen: serverTimestamp(),
       };
+      if (!USERNAME_DECRYPTION_ENABLED) {
+        userData.encryptedName = null;
+      }
       if (!existingDoc.exists()) {
         userData.subSessionId = 'general';
         userData.joinedAt = serverTimestamp();
@@ -136,34 +137,40 @@ export const useSessionPresence = ({
 
     initPresence();
 
-    // Heartbeat: update lastSeen every 15s so other clients can detect stale users
-    heartbeatRef.current = setInterval(() => {
-      updateDoc(userDocRef, { lastSeen: serverTimestamp() }).catch(() => {});
-    }, HEARTBEAT_INTERVAL_MS);
-
-    // Clean up stale users left behind by crashed/closed tabs
-    const cleanupStale = async () => {
-      try {
-        const usersSnap = await getDocs(collection(firestore, 'sessions', sessionId, 'users'));
-        const now = Date.now();
-        for (const userDoc of usersSnap.docs) {
-          if (userDoc.id === authUser.uid) continue;
-          const data = userDoc.data();
-          const lastSeen = data.lastSeen as Timestamp | undefined;
-          if (lastSeen && now - lastSeen.toMillis() > STALE_THRESHOLD_MS) {
-            await deleteDoc(userDoc.ref).catch(() => {});
-            const sessionSnap = await getDoc(sessionDocRef);
-            if (sessionSnap.exists() && sessionSnap.data().participantCount != null) {
-              await updateDoc(sessionDocRef, { participantCount: increment(-1) }).catch(() => {});
-            }
-          }
-        }
-      } catch {
-        // ignore
+    // Heartbeat: keep presence alive. If the doc was removed unexpectedly, recreate it.
+    const buildHeartbeatPayload = (): Record<string, unknown> => {
+      const payload: Record<string, unknown> = {
+        id: authUser.uid,
+        sessionId,
+        name: e2eEnabled && USERNAME_DECRYPTION_ENABLED ? 'Encrypted' : username,
+        isScreenSharing: false,
+        isMuted: false,
+        lastSeen: serverTimestamp(),
+      };
+      if (!USERNAME_DECRYPTION_ENABLED) {
+        payload.encryptedName = null;
       }
+      return payload;
     };
-    const staleCleanupInterval = setInterval(cleanupStale, STALE_CLEANUP_INTERVAL_MS);
-    setTimeout(cleanupStale, 3_000);
+
+    heartbeatRef.current = setInterval(() => {
+      updateDoc(userDocRef, { lastSeen: serverTimestamp() }).catch(() => {
+        getDoc(userDocRef)
+          .then((snap) => {
+            if (snap.exists()) return;
+            setDoc(
+              userDocRef,
+              {
+                ...buildHeartbeatPayload(),
+                subSessionId: 'general',
+                joinedAt: serverTimestamp(),
+              },
+              { merge: true }
+            ).catch(() => {});
+          })
+          .catch(() => {});
+      });
+    }, HEARTBEAT_INTERVAL_MS);
 
     const onBeforeUnload = () => handleLeaveSync();
     window.addEventListener('beforeunload', onBeforeUnload);
@@ -176,7 +183,6 @@ export const useSessionPresence = ({
         clearInterval(heartbeatRef.current);
         heartbeatRef.current = null;
       }
-      clearInterval(staleCleanupInterval);
       // Delayed leave: only run if effect hasn't re-run (avoids permission error when
       // users collection is still subscribed during tab switch / effect re-run).
       setTimeout(() => {

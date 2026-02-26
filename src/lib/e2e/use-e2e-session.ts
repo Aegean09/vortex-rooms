@@ -71,6 +71,7 @@ export function useE2ESession({
   const unsubEncryptedKeysRef = useRef<(() => void) | null>(null);
   const prevParticipantCountRef = useRef<number>(0);
   const publicKeysRef = useRef<Record<string, string>>({});
+  const hasSeenPublicKeysRef = useRef(false);
   const metadataKeyRef = useRef<string | null>(null);
   /** True when the metadataKey was generated locally (not received from another user or loaded from storage). */
   const metadataKeyIsLocalRef = useRef(false);
@@ -141,7 +142,6 @@ export function useE2ESession({
         // Pass empty string for userId since keys are now sessionId-only
         const pkDecResult = PkEncryption.loadPkDecryptionFromStorage(Olm, '', sessionId);
         isRefreshRef.current = !!pkDecResult;
-        console.log('[E2E] checkRefresh: isRefreshRef.current =', isRefreshRef.current);
       } catch (err) {
         console.warn('[E2E] checkRefresh error:', err);
         isRefreshRef.current = false;
@@ -188,14 +188,6 @@ export function useE2ESession({
           const isRefresh = isRefreshRef.current || !!PkEncryption.loadPkDecryptionFromStorage(olmRef.current!, '', sessionId);
           const shouldFilterByJoinedAt = !isRefresh && joinedAtMs != null;
           
-          console.log('[E2E] doSubscribeEncryptedKeys:', {
-            encryptedKeysCount: encryptedKeys.length,
-            isRefresh,
-            shouldFilterByJoinedAt,
-            joinedAtMs,
-            pkDecAvailable: !!pkDec
-          });
-          
           let filteredCount = 0;
           let successCount = 0;
           let errorCount = 0;
@@ -241,20 +233,10 @@ export function useE2ESession({
             }
           }
           
-          console.log('[E2E] doSubscribeEncryptedKeys result:', {
-            filteredCount,
-            successCount,
-            errorCount,
-            sessionsCreated: Object.keys(next).length,
-            senderUserIds: Object.keys(next),
-            existingSelfInbound: !!inboundByUserIdRef.current[authUserId!]
-          });
-          
           // Always update inboundByUserIdRef, even if no new sessions were created.
           // This ensures that on refresh, we rebuild the session map from Firestore snapshot.
           // Preserve self-inbound (it's not in encryptedKeys snapshot).
           const selfInbound = inboundByUserIdRef.current[authUserId!];
-          console.log('[E2E] doSubscribeEncryptedKeys: Before update - selfInbound exists:', !!selfInbound, 'currentOutboundKeyRef:', !!currentOutboundKeyRef.current, 'outboundRef:', !!outboundRef.current);
           
           inboundByUserIdRef.current = next;
           
@@ -280,12 +262,11 @@ export function useE2ESession({
           
           if (finalSelfInbound) {
             inboundByUserIdRef.current[authUserId!] = finalSelfInbound;
-            console.log('[E2E] doSubscribeEncryptedKeys: Final state - self-inbound set, total sessions:', Object.keys(inboundByUserIdRef.current).length);
           } else {
             console.error('[E2E] doSubscribeEncryptedKeys: CRITICAL - No self-inbound after all attempts!');
           }
           // Generate metadataKey if we still don't have one and we're the sole participant.
-          if (!metadataKeyRef.current) {
+          if (!metadataKeyRef.current && hasSeenPublicKeysRef.current) {
             const otherPks = Object.keys(publicKeysRef.current).filter(
               (uid) => uid !== authUserId,
             );
@@ -336,6 +317,7 @@ export function useE2ESession({
         firestore!,
         sessionId,
         (publicKeys) => {
+          hasSeenPublicKeysRef.current = true;
           publicKeysRef.current = publicKeys;
 
           const Olm = olmRef.current;
@@ -504,7 +486,6 @@ export function useE2ESession({
         const finalPkDecResult = PkEncryption.loadPkDecryptionFromStorage(Olm, '', sessionId);
         if (finalPkDecResult) {
           isRefreshRef.current = true;
-          console.log('[E2E] setup: Final check - isRefreshRef.current = true');
         }
         
         // Start subscriptions — these will populate inboundByUserIdRef as snapshots arrive.
@@ -537,6 +518,7 @@ export function useE2ESession({
       sentOutboundKeyToRef.current = new Set();
       metadataKeyRef.current = null;
       metadataKeyIsLocalRef.current = false;
+      hasSeenPublicKeysRef.current = false;
       metadataKeyDistributedRef.current = false;
       inboundByUserIdRef.current = {};
       unsubRef.current?.();

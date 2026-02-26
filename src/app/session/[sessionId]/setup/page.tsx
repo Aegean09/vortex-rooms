@@ -10,9 +10,8 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { ArrowLeft, User as UserIcon, Mic, AlertCircle, Lock, Unlock, Users, Sparkles, ShieldCheck, Info, Eye, EyeOff } from 'lucide-react';
+import { ArrowLeft, User as UserIcon, Mic, AlertCircle, Lock, Unlock, Users, Sparkles, ShieldCheck, Eye, EyeOff } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { TermsContent } from '@/components/legal/terms-content';
 import { PrivacyContent } from '@/components/legal/privacy-content';
@@ -24,7 +23,10 @@ import { cn } from '@/lib/utils';
 
 type RoomType = 'default' | 'custom';
 
-type StepId = 'password' | 'name' | 'room' | 'audio' | 'checkbox';
+type StepId = 'password' | 'name' | 'room' | 'audio';
+
+const MIC_PERMISSION_STORAGE_KEY = 'vortex-mic-permission-granted-v1';
+const LEGAL_CONSENT_STORAGE_KEY = 'vortex-legal-consent-v1';
 
 export default function SetupPage() {
   const router = useRouter();
@@ -43,7 +45,9 @@ export default function SetupPage() {
   const [isJoining, setIsJoining] = useState(false);
   const [requiresPassword, setRequiresPassword] = useState(false);
   const [roomPassword, setRoomPassword] = useState('');
-  const [ageConfirmed, setAgeConfirmed] = useState(false);
+  const [hasLegalConsent, setHasLegalConsent] = useState(false);
+  const [consentChecked, setConsentChecked] = useState(false);
+  const [showConsentModal, setShowConsentModal] = useState(false);
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [showRoomPassword, setShowRoomPassword] = useState(false);
   const [showCreatePassword, setShowCreatePassword] = useState(false);
@@ -67,10 +71,10 @@ export default function SetupPage() {
   const needsPassword = requiresPassword && (sessionData?.requiresPassword || sessionData?.password);
 
   const steps: StepId[] = isCreating
-    ? ['name', 'room', 'audio', 'checkbox']
+    ? ['name', 'room', 'audio']
     : needsPassword
-      ? ['password', 'name', 'audio', 'checkbox']
-      : ['name', 'audio', 'checkbox'];
+      ? ['password', 'name', 'audio']
+      : ['name', 'audio'];
 
   const currentStep = steps[currentStepIndex];
   const isLastStep = currentStepIndex === steps.length - 1;
@@ -97,6 +101,61 @@ export default function SetupPage() {
       initiateAnonymousSignIn(auth);
     }
   }, [authUser, isUserLoading, auth]);
+
+  useEffect(() => {
+    try {
+      const hasStoredConsent = localStorage.getItem(LEGAL_CONSENT_STORAGE_KEY) === 'true';
+      if (hasStoredConsent) {
+        setHasLegalConsent(true);
+        setConsentChecked(true);
+      } else {
+        setShowConsentModal(true);
+      }
+
+      if (localStorage.getItem(MIC_PERMISSION_STORAGE_KEY) === 'true') {
+        setMicPermission('granted');
+      }
+    } catch {
+      // ignore
+    }
+
+    let cancelled = false;
+    let permissionStatus: PermissionStatus | null = null;
+    const applyPermissionState = (state: PermissionState) => {
+      if (cancelled) return;
+      if (state === 'granted') {
+        setMicPermission('granted');
+        try {
+          localStorage.setItem(MIC_PERMISSION_STORAGE_KEY, 'true');
+        } catch {
+          // ignore
+        }
+      } else if (state === 'denied') {
+        setMicPermission('denied');
+        try {
+          localStorage.removeItem(MIC_PERMISSION_STORAGE_KEY);
+        } catch {
+          // ignore
+        }
+      }
+    };
+
+    if (navigator.permissions?.query) {
+      navigator.permissions
+        .query({ name: 'microphone' as PermissionName })
+        .then((status) => {
+          permissionStatus = status;
+          applyPermissionState(status.state);
+          status.onchange = () => applyPermissionState(status.state);
+        })
+        .catch(() => {});
+    }
+
+    return () => {
+      cancelled = true;
+      if (permissionStatus) permissionStatus.onchange = null;
+    };
+  }, []);
 
   const cleanupAudio = useCallback(() => {
     if (animationFrameRef.current) {
@@ -147,9 +206,19 @@ export default function SetupPage() {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
       localStreamRef.current = stream;
       setMicPermission('granted');
+      try {
+        localStorage.setItem(MIC_PERMISSION_STORAGE_KEY, 'true');
+      } catch {
+        // ignore
+      }
       startAudioProcessing(stream);
     } catch {
       setMicPermission('denied');
+      try {
+        localStorage.removeItem(MIC_PERMISSION_STORAGE_KEY);
+      } catch {
+        // ignore
+      }
     }
   }, [cleanupAudio, startAudioProcessing]);
 
@@ -169,8 +238,6 @@ export default function SetupPage() {
         return true;
       case 'audio':
         return micPermission === 'granted';
-      case 'checkbox':
-        return ageConfirmed;
       default:
         return false;
     }
@@ -186,6 +253,10 @@ export default function SetupPage() {
 
   const handleJoin = async () => {
     if (!nameInput.trim() || !firestore || !authUser || !sessionId || isJoining) return;
+    if (!hasLegalConsent) {
+      setShowConsentModal(true);
+      return;
+    }
 
     const pw = sessionData?.requiresPassword || sessionData?.password;
     if (pw) {
@@ -295,10 +366,7 @@ export default function SetupPage() {
 
   const getButtonLabel = () => {
     if (isJoining) return 'Joining Room...';
-    if (isLastStep) {
-      if (currentStep === 'checkbox') return 'Join Room';
-      return 'Confirm Age to Continue';
-    }
+    if (isLastStep) return 'Join Room';
     return 'Continue';
   };
 
@@ -521,8 +589,14 @@ export default function SetupPage() {
               )}
               {micPermission === 'granted' && (
                 <div className="space-y-2">
-                  <p className="text-xs text-muted-foreground">Speak into your mic to test</p>
-                  <Progress value={volume} className="w-full h-2" />
+                  {localStreamRef.current ? (
+                    <>
+                      <p className="text-xs text-muted-foreground">Speak into your mic to test</p>
+                      <Progress value={volume} className="w-full h-2" />
+                    </>
+                  ) : (
+                    <p className="text-xs text-green-500">Microphone permission already granted.</p>
+                  )}
                 </div>
               )}
               {micPermission === 'denied' && (
@@ -534,65 +608,6 @@ export default function SetupPage() {
             </div>
           )}
 
-          {/* Step 5: Checkbox */}
-          {isStepVisible('checkbox') && (
-            <div
-              className={cn(
-                'flex items-start gap-3 pt-3 border-t overflow-hidden transition-all duration-300',
-                currentStep === 'checkbox' ? 'animate-in fade-in slide-in-from-top-2' : 'opacity-70'
-              )}
-            >
-              <Checkbox
-                id="age-confirm"
-                checked={ageConfirmed}
-                onCheckedChange={(checked) => setAgeConfirmed(checked === true)}
-                className="mt-0.5"
-              />
-              <div className="grid gap-1">
-                <label
-                  htmlFor="age-confirm"
-                  className="text-sm font-medium leading-none cursor-pointer flex items-center gap-1.5"
-                >
-                  <ShieldCheck className="h-3.5 w-3.5 text-primary" />
-                  I confirm that I am at least 13 years old
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Info className="h-3.5 w-3.5 text-muted-foreground/60 hover:text-muted-foreground cursor-help" />
-                      </TooltipTrigger>
-                      <TooltipContent side="top" className="max-w-[260px] text-xs">
-                        <p>In accordance with Turkish law (KVKK) and international regulations (COPPA), users under 13 are not permitted to use this service.</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                </label>
-                <p className="text-[11px] text-muted-foreground leading-snug">
-                  By joining, you agree to the{' '}
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      setShowTermsModal(true);
-                    }}
-                    className="text-primary hover:underline"
-                  >
-                    Terms of Service
-                  </button>
-                  {' '}and{' '}
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      setShowPrivacyModal(true);
-                    }}
-                    className="text-primary hover:underline"
-                  >
-                    Privacy Policy
-                  </button>.
-                </p>
-              </div>
-            </div>
-          )}
         </CardContent>
 
         <CardFooter>
@@ -615,6 +630,69 @@ export default function SetupPage() {
           </Button>
         </CardFooter>
       </Card>
+
+      <Dialog
+        open={showConsentModal}
+        onOpenChange={(open) => {
+          if (hasLegalConsent) setShowConsentModal(open);
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Before You Continue</DialogTitle>
+            <DialogDescription>
+              We need a one-time confirmation for age and legal acceptance.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="flex items-start gap-3">
+              <Checkbox
+                id="legal-consent"
+                checked={consentChecked}
+                onCheckedChange={(checked) => setConsentChecked(checked === true)}
+                className="mt-0.5"
+              />
+              <label htmlFor="legal-consent" className="text-sm leading-snug cursor-pointer">
+                <span className="inline-flex items-center gap-1.5 font-medium">
+                  <ShieldCheck className="h-3.5 w-3.5 text-primary" />
+                  I confirm that I am at least 13 years old
+                </span>
+                <span className="block mt-1 text-muted-foreground">
+                  I also agree to the Terms of Service and Privacy Policy.
+                </span>
+              </label>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button type="button" variant="outline" size="sm" onClick={() => setShowTermsModal(true)}>
+                Terms of Service
+              </Button>
+              <Button type="button" variant="outline" size="sm" onClick={() => setShowPrivacyModal(true)}>
+                Privacy Policy
+              </Button>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="ghost" onClick={() => router.push('/')}>
+                Leave
+              </Button>
+              <Button
+                type="button"
+                disabled={!consentChecked}
+                onClick={() => {
+                  try {
+                    localStorage.setItem(LEGAL_CONSENT_STORAGE_KEY, 'true');
+                  } catch {
+                    // ignore
+                  }
+                  setHasLegalConsent(true);
+                  setShowConsentModal(false);
+                }}
+              >
+                Continue
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Terms Modal */}
       <Dialog open={showTermsModal} onOpenChange={setShowTermsModal}>
