@@ -658,24 +658,39 @@ export default function SetupPage() {
                   I confirm that I am at least 13 years old
                 </span>
                 <span className="block mt-1 text-muted-foreground">
-                  I also agree to the Terms of Service and Privacy Policy.
+                  I also agree to the{' '}
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowTermsModal(true);
+                    }}
+                    className="underline text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
+                  >
+                    Terms of Service
+                  </button>
+                  {' '}and{' '}
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowPrivacyModal(true);
+                    }}
+                    className="underline text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
+                  >
+                    Privacy Policy
+                  </button>
+                  .
                 </span>
               </label>
             </div>
-            <div className="flex items-center gap-2">
-              <Button type="button" variant="outline" size="sm" onClick={() => setShowTermsModal(true)}>
-                Terms of Service
-              </Button>
-              <Button type="button" variant="outline" size="sm" onClick={() => setShowPrivacyModal(true)}>
-                Privacy Policy
-              </Button>
-            </div>
-            <div className="flex justify-end gap-2">
-              <Button type="button" variant="ghost" onClick={() => router.push('/')}>
+            <div className="flex gap-2">
+              <Button type="button" variant="ghost" className="flex-1" onClick={() => router.push('/')}>
                 Leave
               </Button>
               <Button
                 type="button"
+                className="flex-1"
                 disabled={!consentChecked}
                 onClick={() => {
                   try {

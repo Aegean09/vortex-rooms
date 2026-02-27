@@ -26,7 +26,7 @@ import {
 } from './helpers/audio-helpers';
 import { percentToRms } from '@/helpers/audio-helpers';
 import { applyScreenShareBitrateCap, applyScreenShareCapsToAll } from './services/screen-share-service';
-import { REMOTE_USER_VOLUME_MAX_PERCENT } from '@/config/app-config';
+import { REMOTE_USER_VOLUME_MAX_PERCENT, NOISE_GATE_DEFAULT_THRESHOLD_PERCENT } from '@/config/app-config';
 
 const MIC_PERMISSION_STORAGE_KEY = 'vortex-mic-permission-granted-v1';
 
@@ -117,7 +117,7 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
   const [screenShareStream, setScreenShareStream] = useState<MediaStream | null>(null);
   const screenShareTrackRef = useRef<MediaStreamTrack | null>(null);
   const [presenterId, setPresenterId] = useState<string | null>(null);
-  const [noiseGateThreshold, setNoiseGateThreshold] = useState<number>(() => percentToRms(55));
+  const [noiseGateThreshold, setNoiseGateThreshold] = useState<number>(() => percentToRms(NOISE_GATE_DEFAULT_THRESHOLD_PERCENT));
   const [pushToTalk, setPushToTalk] = useState<boolean>(false);
   const [pushToTalkKey, setPushToTalkKey] = useState<string>('Space');
   const [isPressingPushToTalkKey, setIsPressingPushToTalkKey] = useState<boolean>(false);
