@@ -268,7 +268,33 @@ export default function SessionPage() {
     return () => { cancelled = true; };
   }, [rawUsers, e2eMetadataKey]);
 
-  const users = decryptedUsers;
+  // Filter out stale users (lastSeen > 30 seconds ago)
+  // This handles cases where browser closes without proper cleanup
+  const STALE_THRESHOLD_MS = 30_000;
+  const [staleCheckTick, setStaleCheckTick] = useState(0);
+  
+  // Periodically trigger stale user check
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setStaleCheckTick(t => t + 1);
+    }, 10_000); // Check every 10 seconds
+    return () => clearInterval(interval);
+  }, []);
+
+  const users = useMemo(() => {
+    if (!decryptedUsers) return null;
+    const now = Date.now();
+    return decryptedUsers.filter(user => {
+      // Always show current user
+      if (user.id === authUser?.uid) return true;
+      // If no lastSeen, show user (backward compatibility)
+      if (!user.lastSeen) return true;
+      // Check if user is stale
+      const lastSeenMs = user.lastSeen.toMillis();
+      return (now - lastSeenMs) < STALE_THRESHOLD_MS;
+    });
+  }, [decryptedUsers, authUser?.uid, staleCheckTick]);
+
   const currentUser = useMemo(() => {
     if (!authUser || !users) return null;
     return users.find((u) => u.id === authUser.uid) || null;
