@@ -27,6 +27,7 @@ type StepId = 'password' | 'name' | 'room' | 'audio';
 
 const MIC_PERMISSION_STORAGE_KEY = 'vortex-mic-permission-granted-v1';
 const LEGAL_CONSENT_STORAGE_KEY = 'vortex-legal-consent-v1';
+const REMEMBERED_NAME_STORAGE_KEY = 'vortex-remembered-name';
 
 export default function SetupPage() {
   const router = useRouter();
@@ -35,7 +36,17 @@ export default function SetupPage() {
   const auth = useAuth();
   const firestore = useFirestore();
   const { user: authUser, isUserLoading } = useUser();
-  const [nameInput, setNameInput] = useState('');
+  const [nameInput, setNameInput] = useState(() => {
+    // Try to load remembered name from localStorage
+    if (typeof window !== 'undefined') {
+      try {
+        return localStorage.getItem(REMEMBERED_NAME_STORAGE_KEY) || '';
+      } catch {
+        return '';
+      }
+    }
+    return '';
+  });
   const [avatarSeed] = useState<string>(() => generateRandomSeed());
   const [roomType, setRoomType] = useState<RoomType>('default');
   const [password, setPassword] = useState('');
@@ -322,6 +333,13 @@ export default function SetupPage() {
     sessionStorage.setItem(`vortex-username-${sessionId}`, nameInput.trim());
     sessionStorage.setItem(`vortex-avatar-style-${sessionId}`, AVATAR_STYLE);
     sessionStorage.setItem(`vortex-avatar-seed-${sessionId}`, avatarSeed);
+    
+    // Remember name for future sessions
+    try {
+      localStorage.setItem(REMEMBERED_NAME_STORAGE_KEY, nameInput.trim());
+    } catch {
+      // ignore
+    }
 
     const sessionDocRef = doc(firestore, 'sessions', sessionId);
     const newSessionData: any = {

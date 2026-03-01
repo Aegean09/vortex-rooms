@@ -16,6 +16,49 @@ export const playJoinSound = () => {
   oscillator.stop(audioContext.currentTime + 0.1);
 };
 
+export const playLeaveSound = () => {
+  const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+  if (!audioContext) return;
+
+  const oscillator = audioContext.createOscillator();
+  const gainNode = audioContext.createGain();
+
+  // Lower pitch descending tone for leave
+  oscillator.type = 'sine';
+  oscillator.frequency.setValueAtTime(660, audioContext.currentTime);
+  oscillator.frequency.linearRampToValueAtTime(440, audioContext.currentTime + 0.15);
+  gainNode.gain.setValueAtTime(0.1, audioContext.currentTime);
+  gainNode.gain.linearRampToValueAtTime(0, audioContext.currentTime + 0.15);
+
+  oscillator.connect(gainNode);
+  gainNode.connect(audioContext.destination);
+
+  oscillator.start();
+  oscillator.stop(audioContext.currentTime + 0.15);
+};
+
+export const playChannelSwitchSound = () => {
+  const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+  if (!audioContext) return;
+
+  const oscillator = audioContext.createOscillator();
+  const gainNode = audioContext.createGain();
+
+  // Quick double beep for channel switch
+  oscillator.type = 'sine';
+  oscillator.frequency.setValueAtTime(600, audioContext.currentTime);
+  oscillator.frequency.setValueAtTime(800, audioContext.currentTime + 0.08);
+  gainNode.gain.setValueAtTime(0.08, audioContext.currentTime);
+  gainNode.gain.setValueAtTime(0.08, audioContext.currentTime + 0.08);
+  gainNode.gain.linearRampToValueAtTime(0, audioContext.currentTime + 0.16);
+
+  oscillator.connect(gainNode);
+  gainNode.connect(audioContext.destination);
+
+  oscillator.start();
+  oscillator.stop(audioContext.currentTime + 0.16);
+};
+
 export const getKeyDisplayName = (keyCode: string): string => {
   if (keyCode === 'Space') return 'Space';
   if (keyCode === 'MediaRecord') return 'Record';

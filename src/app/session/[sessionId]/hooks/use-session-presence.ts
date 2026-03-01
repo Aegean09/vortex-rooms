@@ -103,7 +103,9 @@ export const useSessionPresence = ({
         userData.subSessionId = 'general';
         userData.joinedAt = serverTimestamp();
       }
-      if (!e2eEnabled) {
+      // Save avatar when E2E is disabled OR when username decryption is disabled
+      // (in the latter case, we don't encrypt avatar either)
+      if (!e2eEnabled || !USERNAME_DECRYPTION_ENABLED) {
         if (avatarStyle) userData.avatarStyle = avatarStyle;
         if (avatarSeed) userData.avatarSeed = avatarSeed;
       }
@@ -175,10 +177,30 @@ export const useSessionPresence = ({
     const onBeforeUnload = () => handleLeaveSync();
     window.addEventListener('beforeunload', onBeforeUnload);
 
+    // Beacon API for mobile browsers (more reliable when tab/browser closes)
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        // Use Beacon API to send leave request - works even when page is closing
+        const leaveUrl = `/api/leave-session`;
+        const data = JSON.stringify({
+          sessionId,
+          odaUserId: authUser.uid,
+        });
+        
+        // Try Beacon API first (most reliable for mobile)
+        if (navigator.sendBeacon) {
+          const blob = new Blob([data], { type: 'application/json' });
+          navigator.sendBeacon(leaveUrl, blob);
+        }
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+
     const runId = ++presenceEffectRunId;
 
     return () => {
       window.removeEventListener('beforeunload', onBeforeUnload);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
       if (heartbeatRef.current) {
         clearInterval(heartbeatRef.current);
         heartbeatRef.current = null;

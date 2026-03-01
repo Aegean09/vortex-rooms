@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
-import { Mic, MicOff, Headphones, PhoneOff, HeadphoneOff, ScreenShare, ScreenShareOff, Settings2, Radio, RefreshCw, Shuffle, Pencil } from 'lucide-react';
+import { Mic, MicOff, Headphones, PhoneOff, HeadphoneOff, ScreenShare, ScreenShareOff, Radio, RefreshCw, Shuffle, Pencil, ChevronUp } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -278,42 +278,36 @@ export function VoiceControls({ currentUser, onAvatarChange }: VoiceControlsProp
         </div>
         <div className="flex items-center gap-2">
           {showBandwidthIndicator && <BandwidthIndicator stats={bandwidthStats} />}
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button variant={isMuted ? 'destructive' : 'secondary'} size="icon" onClick={handleToggleMute} disabled={!localStream}>
-                {isMuted ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>
-              <p>{isMuted ? 'Unmute' : 'Mute'}</p>
-            </TooltipContent>
-          </Tooltip>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button variant={isDeafened ? 'destructive' : 'secondary'} size="icon" onClick={handleToggleDeafen}>
-                {isDeafened ? <HeadphoneOff className="h-5 w-5" /> : <Headphones className="h-5 w-5" />}
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>
-              <p>{isDeafened ? 'Undeafen' : 'Deafen'}</p>
-            </TooltipContent>
-          </Tooltip>
-
           <Popover>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <PopoverTrigger asChild>
-                  <Button variant="secondary" size="icon">
-                    <Settings2 className="h-5 w-5" />
+            <div className="flex items-center">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button 
+                    variant={isMuted ? 'destructive' : 'secondary'} 
+                    size="icon" 
+                    onClick={handleToggleMute} 
+                    disabled={!localStream}
+                    className="rounded-r-none"
+                  >
+                    {isMuted ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
                   </Button>
-                </PopoverTrigger>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Voice Settings</p>
-              </TooltipContent>
-            </Tooltip>
-
-            <PopoverContent className="w-80 max-h-[70vh] overflow-y-auto" side="top" align="end">
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>{isMuted ? 'Unmute' : 'Mute'}</p>
+                </TooltipContent>
+              </Tooltip>
+              <PopoverTrigger asChild>
+                <Button 
+                  variant="secondary" 
+                  size="icon" 
+                  className="rounded-l-none border-l border-border/50 w-6 px-0"
+                >
+                  <ChevronUp className="h-3.5 w-3.5" />
+                  <span className="sr-only">Audio Settings</span>
+                </Button>
+              </PopoverTrigger>
+            </div>
+          <PopoverContent className="w-80 max-h-[70vh] overflow-y-auto" side="top" align="center">
               <div className="space-y-4">
                 <div className="space-y-3">
                   <h4 className="font-medium text-sm flex items-center gap-2">
@@ -483,6 +477,16 @@ export function VoiceControls({ currentUser, onAvatarChange }: VoiceControlsProp
               </div>
             </PopoverContent>
           </Popover>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button variant={isDeafened ? 'destructive' : 'secondary'} size="icon" onClick={handleToggleDeafen}>
+                {isDeafened ? <HeadphoneOff className="h-5 w-5" /> : <Headphones className="h-5 w-5" />}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>{isDeafened ? 'Undeafen' : 'Deafen'}</p>
+            </TooltipContent>
+          </Tooltip>
 
           {!isMobile && (() => {
             const isDisabled = !isScreenSharing && !!presenterId;
