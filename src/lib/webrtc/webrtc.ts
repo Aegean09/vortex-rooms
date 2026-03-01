@@ -94,16 +94,38 @@ export const createPeerConnection = (
   };
 
   pc.oniceconnectionstatechange = () => {
+    // Log state changes for debugging mobile issues
+    console.log(`[WebRTC] ICE state changed: ${pc.iceConnectionState} (peer: ${remotePeerId})`);
+    
     if (pc.iceConnectionState === 'disconnected' || pc.iceConnectionState === 'failed') {
+      // First attempt: quick ICE restart after 1 second (mobile recovery)
       setTimeout(() => {
         if (pc.iceConnectionState === 'disconnected' || pc.iceConnectionState === 'failed') {
+          console.log(`[WebRTC] Attempting ICE restart (1st) for peer: ${remotePeerId}`);
           try {
             pc.restartIce();
           } catch {
             // ignore
           }
         }
-      }, 2000);
+      }, 1000);
+
+      // Second attempt: retry after 5 seconds if still disconnected
+      setTimeout(() => {
+        if (pc.iceConnectionState === 'disconnected' || pc.iceConnectionState === 'failed') {
+          console.log(`[WebRTC] Attempting ICE restart (2nd) for peer: ${remotePeerId}`);
+          try {
+            pc.restartIce();
+          } catch {
+            // ignore
+          }
+        }
+      }, 5000);
+    }
+
+    // When connection is restored, log it
+    if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
+      console.log(`[WebRTC] Connection restored for peer: ${remotePeerId}`);
     }
   };
 

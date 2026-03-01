@@ -9,6 +9,7 @@ import { Lobby } from '@/components/lobby/lobby';
 import { ScreenShareView } from '@/components/screen-share-view/screen-share-view';
 import { RoomNotFound } from '@/components/room-not-found/room-not-found';
 import { SessionLoader } from '@/components/session-loader/session-loader';
+import { VpnWarning } from '@/components/vpn-warning/vpn-warning';
 import { type User } from '@/interfaces/session';
 import { Skeleton } from '@/components/ui/skeleton';
 import { WebRTCProvider } from '@/lib/webrtc/provider';
@@ -149,6 +150,7 @@ export default function SessionPage() {
       updateDoc(userDocRef, {
         name: username,
         encryptedName: null,
+        ...(avatarSeed ? { avatarSeed, encryptedAvatarSeed: null } : {}),
       }).catch(() => {});
       return;
     }
@@ -356,6 +358,7 @@ export default function SessionPage() {
       localPeerId={authUser.uid}
       subSessionId={currentUser?.subSessionId ?? 'general'}
     >
+      <VpnWarning />
       <main className="relative flex h-screen w-full flex-col p-2 md:p-4 bg-background gap-4">
         <div className="absolute inset-0 -z-10 h-full w-full bg-background bg-[radial-gradient(#2f2f33_1px,transparent_1px)] [background-size:32px_32px]"></div>
 

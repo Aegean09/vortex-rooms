@@ -13,6 +13,8 @@ import { createPeerConnection, createOffer, handleOffer } from './webrtc';
 import { useUser, useCollection, useMemoFirebase } from '@/firebase';
 import { User } from '@/interfaces/session';
 import { usePushToTalk } from './hooks/use-push-to-talk';
+import { useMuteShortcut } from './hooks/use-mute-shortcut';
+import { useMobileBackgroundRecovery } from './hooks/use-mobile-background-recovery';
 import { useRemoteVoiceActivity } from './hooks/use-remote-voice-activity';
 import { useLocalVoiceActivity } from './hooks/use-local-voice-activity';
 import { toggleMuteTracks } from './services/audio-service';
@@ -464,6 +466,13 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
     }
   }, [isMuted, isDeafened, toggleMute]);
 
+  // Global mute/deafen shortcuts (M and D keys)
+  useMuteShortcut({
+    toggleMute,
+    toggleDeafen,
+    enabled: !pushToTalk, // Disable when push-to-talk is active
+  });
+
   const toggleScreenShare = useCallback(async () => {
     if (!firestore || !user || !localStream) return;
     if (!isScreenSharing && presenterId && presenterId !== user.uid) return;
@@ -569,6 +578,42 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
       await enumerateAudioDevices();
     }
   }, [rawStream, selectedDeviceId, getMediaWithDevice, enumerateAudioDevices]);
+
+  // Mobile background recovery - reconnect when app returns from background
+  useMobileBackgroundRecovery({
+    localStream,
+    rawStream,
+    peerConnections,
+    reconnectMicrophone,
+    onConnectionRecovery: useCallback(() => {
+      // When recovering from background, we may need to re-establish connections
+      // The peer connection listeners will handle reconnection automatically
+      // but we should resume any suspended audio contexts
+      if (playbackAudioContextRef.current?.state === 'suspended') {
+        playbackAudioContextRef.current.resume().catch(() => {});
+      }
+      if (audioNodesRef.current?.audioContext?.state === 'suspended') {
+        audioNodesRef.current.audioContext.resume().catch(() => {});
+      }
+    }, []),
+  });
+
+  // Listen for audio resume events from mobile recovery
+  useEffect(() => {
+    const handleResumeAudio = () => {
+      if (playbackAudioContextRef.current?.state === 'suspended') {
+        playbackAudioContextRef.current.resume().catch(() => {});
+      }
+      if (audioNodesRef.current?.audioContext?.state === 'suspended') {
+        audioNodesRef.current.audioContext.resume().catch(() => {});
+      }
+    };
+
+    window.addEventListener('vortex:resume-audio', handleResumeAudio);
+    return () => {
+      window.removeEventListener('vortex:resume-audio', handleResumeAudio);
+    };
+  }, []);
 
   useEffect(() => {
     if (!user) return;
