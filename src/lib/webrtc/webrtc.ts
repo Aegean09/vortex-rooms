@@ -14,13 +14,8 @@ import {
   writeBatch,
   Unsubscribe,
 } from 'firebase/firestore';
-
-const ICE_SERVERS = {
-  iceServers: [
-    { urls: 'stun:stun.l.google.com:19302' },
-    { urls: 'stun:stun1.l.google.com:19302' },
-  ],
-};
+import { getDefaultIceConfig } from './config';
+import { monitorIceConnection } from './utils';
 
 interface PeerConnectionWithUnsubscribe extends RTCPeerConnection {
   unsubscribeCandidates?: Unsubscribe;
@@ -36,7 +31,7 @@ export const createPeerConnection = (
   onTrack: (track: MediaStreamTrack, trackType: 'audio' | 'video') => void,
   onDisconnect: () => void
 ): PeerConnectionWithUnsubscribe => {
-  const pc: PeerConnectionWithUnsubscribe = new RTCPeerConnection(ICE_SERVERS);
+  const pc: PeerConnectionWithUnsubscribe = new RTCPeerConnection(getDefaultIceConfig());
   pc.pendingCandidates = [];
 
   const callId = localPeerId < remotePeerId ? `${localPeerId}_${remotePeerId}` : `${remotePeerId}_${localPeerId}`;
@@ -106,6 +101,8 @@ export const createPeerConnection = (
       }, 2000);
     }
   };
+
+  monitorIceConnection(pc, remotePeerId);
 
   return pc;
 };
