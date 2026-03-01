@@ -177,45 +177,37 @@ export const useSessionPresence = ({
     const onBeforeUnload = () => handleLeaveSync();
     window.addEventListener('beforeunload', onBeforeUnload);
 
-    // Mobile browser close detection
-    // When page becomes hidden (tab close, browser close, phone lock), 
-    // we try to delete the user document immediately
-    let isLeavingPage = false;
-    const onVisibilityChange = () => {
-      if (document.visibilityState === 'hidden' && !isLeavingPage) {
-        // Mark that we're potentially leaving to avoid duplicate calls
-        isLeavingPage = true;
-        
-        // Try to delete user document directly - this works better than Beacon API
-        // because Firestore SDK can queue the operation
-        handleLeaveSync();
-        
-        // Also try Beacon API as backup for when Firestore SDK doesn't complete
-        const leaveUrl = `/api/leave-session`;
-        const data = JSON.stringify({
-          sessionId,
-          userId: authUser.uid,
-        });
-        if (navigator.sendBeacon) {
-          const blob = new Blob([data], { type: 'application/json' });
-          navigator.sendBeacon(leaveUrl, blob);
-        }
-        
-        // Reset flag after a short delay in case user comes back
-        setTimeout(() => {
-          isLeavingPage = false;
-        }, 1000);
-      }
-    };
-    document.addEventListener('visibilitychange', onVisibilityChange);
+    // NOTE: We do NOT delete user on visibilitychange because:
+    // 1. Mobile browsers fire visibilitychange when switching apps (WhatsApp, etc.)
+    // 2. User expects to stay in room when they come back
+    // 3. Stale user filtering (client-side) handles "ghost" users
+    // 4. Heartbeat stops when page is hidden, so lastSeen won't update
+    //
+    // The cleanup happens via:
+    // - beforeunload (desktop tab close)
+    // - pagehide with persisted=false (actual page unload)
+    // - Stale user filtering (30s threshold)
+    // - Cloud function cleanup (60s threshold)
     
-    // Also handle pagehide event (more reliable on iOS Safari)
+    // pagehide event - only fires on actual page unload, not app switch
     const onPageHide = (event: PageTransitionEvent) => {
       if (event.persisted) {
         // Page is being cached (bfcache), don't leave
         return;
       }
+      // This is a real page unload
       handleLeaveSync();
+      
+      // Also try Beacon API as backup
+      const leaveUrl = `/api/leave-session`;
+      const data = JSON.stringify({
+        sessionId,
+        userId: authUser.uid,
+      });
+      if (navigator.sendBeacon) {
+        const blob = new Blob([data], { type: 'application/json' });
+        navigator.sendBeacon(leaveUrl, blob);
+      }
     };
     window.addEventListener('pagehide', onPageHide);
 
@@ -223,7 +215,6 @@ export const useSessionPresence = ({
 
     return () => {
       window.removeEventListener('beforeunload', onBeforeUnload);
-      document.removeEventListener('visibilitychange', onVisibilityChange);
       window.removeEventListener('pagehide', onPageHide);
       if (heartbeatRef.current) {
         clearInterval(heartbeatRef.current);
