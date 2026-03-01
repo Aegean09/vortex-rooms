@@ -17,3 +17,13 @@ export async function callDeleteSessionCompletely(sessionId: string): Promise<{ 
   const result = await deleteSessionCompletely({ sessionId });
   return result.data;
 }
+
+export async function callLeaveSession(sessionId: string): Promise<{ ok: boolean }> {
+  const functions = getFunctionsInstance();
+  const leaveSession = httpsCallable<{ sessionId: string }, { ok: boolean }>(
+    functions,
+    'leaveSession'
+  );
+  const result = await leaveSession({ sessionId });
+  return result.data;
+}

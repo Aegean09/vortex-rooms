@@ -177,30 +177,54 @@ export const useSessionPresence = ({
     const onBeforeUnload = () => handleLeaveSync();
     window.addEventListener('beforeunload', onBeforeUnload);
 
-    // Beacon API for mobile browsers (more reliable when tab/browser closes)
+    // Mobile browser close detection
+    // When page becomes hidden (tab close, browser close, phone lock), 
+    // we try to delete the user document immediately
+    let isLeavingPage = false;
     const onVisibilityChange = () => {
-      if (document.visibilityState === 'hidden') {
-        // Use Beacon API to send leave request - works even when page is closing
+      if (document.visibilityState === 'hidden' && !isLeavingPage) {
+        // Mark that we're potentially leaving to avoid duplicate calls
+        isLeavingPage = true;
+        
+        // Try to delete user document directly - this works better than Beacon API
+        // because Firestore SDK can queue the operation
+        handleLeaveSync();
+        
+        // Also try Beacon API as backup for when Firestore SDK doesn't complete
         const leaveUrl = `/api/leave-session`;
         const data = JSON.stringify({
           sessionId,
-          odaUserId: authUser.uid,
+          userId: authUser.uid,
         });
-        
-        // Try Beacon API first (most reliable for mobile)
         if (navigator.sendBeacon) {
           const blob = new Blob([data], { type: 'application/json' });
           navigator.sendBeacon(leaveUrl, blob);
         }
+        
+        // Reset flag after a short delay in case user comes back
+        setTimeout(() => {
+          isLeavingPage = false;
+        }, 1000);
       }
     };
     document.addEventListener('visibilitychange', onVisibilityChange);
+    
+    // Also handle pagehide event (more reliable on iOS Safari)
+    const onPageHide = (event: PageTransitionEvent) => {
+      if (event.persisted) {
+        // Page is being cached (bfcache), don't leave
+        return;
+      }
+      handleLeaveSync();
+    };
+    window.addEventListener('pagehide', onPageHide);
 
     const runId = ++presenceEffectRunId;
 
     return () => {
       window.removeEventListener('beforeunload', onBeforeUnload);
       document.removeEventListener('visibilitychange', onVisibilityChange);
+      window.removeEventListener('pagehide', onPageHide);
       if (heartbeatRef.current) {
         clearInterval(heartbeatRef.current);
         heartbeatRef.current = null;
