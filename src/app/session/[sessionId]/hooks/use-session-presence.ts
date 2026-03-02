@@ -103,9 +103,7 @@ export const useSessionPresence = ({
         userData.subSessionId = 'general';
         userData.joinedAt = serverTimestamp();
       }
-      // Save avatar when E2E is disabled OR when username decryption is disabled
-      // (in the latter case, we don't encrypt avatar either)
-      if (!e2eEnabled || !USERNAME_DECRYPTION_ENABLED) {
+      if (!e2eEnabled) {
         if (avatarStyle) userData.avatarStyle = avatarStyle;
         if (avatarSeed) userData.avatarSeed = avatarSeed;
       }
@@ -177,45 +175,10 @@ export const useSessionPresence = ({
     const onBeforeUnload = () => handleLeaveSync();
     window.addEventListener('beforeunload', onBeforeUnload);
 
-    // NOTE: We do NOT delete user on visibilitychange because:
-    // 1. Mobile browsers fire visibilitychange when switching apps (WhatsApp, etc.)
-    // 2. User expects to stay in room when they come back
-    // 3. Stale user filtering (client-side) handles "ghost" users
-    // 4. Heartbeat stops when page is hidden, so lastSeen won't update
-    //
-    // The cleanup happens via:
-    // - beforeunload (desktop tab close)
-    // - pagehide with persisted=false (actual page unload)
-    // - Stale user filtering (30s threshold)
-    // - Cloud function cleanup (60s threshold)
-    
-    // pagehide event - only fires on actual page unload, not app switch
-    const onPageHide = (event: PageTransitionEvent) => {
-      if (event.persisted) {
-        // Page is being cached (bfcache), don't leave
-        return;
-      }
-      // This is a real page unload
-      handleLeaveSync();
-      
-      // Also try Beacon API as backup
-      const leaveUrl = `/api/leave-session`;
-      const data = JSON.stringify({
-        sessionId,
-        userId: authUser.uid,
-      });
-      if (navigator.sendBeacon) {
-        const blob = new Blob([data], { type: 'application/json' });
-        navigator.sendBeacon(leaveUrl, blob);
-      }
-    };
-    window.addEventListener('pagehide', onPageHide);
-
     const runId = ++presenceEffectRunId;
 
     return () => {
       window.removeEventListener('beforeunload', onBeforeUnload);
-      window.removeEventListener('pagehide', onPageHide);
       if (heartbeatRef.current) {
         clearInterval(heartbeatRef.current);
         heartbeatRef.current = null;
