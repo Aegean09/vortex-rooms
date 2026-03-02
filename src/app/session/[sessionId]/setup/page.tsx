@@ -27,7 +27,6 @@ type StepId = 'password' | 'name' | 'room' | 'audio';
 
 const MIC_PERMISSION_STORAGE_KEY = 'vortex-mic-permission-granted-v1';
 const LEGAL_CONSENT_STORAGE_KEY = 'vortex-legal-consent-v1';
-const REMEMBERED_NAME_STORAGE_KEY = 'vortex-remembered-name';
 
 export default function SetupPage() {
   const router = useRouter();
@@ -36,17 +35,7 @@ export default function SetupPage() {
   const auth = useAuth();
   const firestore = useFirestore();
   const { user: authUser, isUserLoading } = useUser();
-  const [nameInput, setNameInput] = useState(() => {
-    // Try to load remembered name from localStorage
-    if (typeof window !== 'undefined') {
-      try {
-        return localStorage.getItem(REMEMBERED_NAME_STORAGE_KEY) || '';
-      } catch {
-        return '';
-      }
-    }
-    return '';
-  });
+  const [nameInput, setNameInput] = useState('');
   const [avatarSeed] = useState<string>(() => generateRandomSeed());
   const [roomType, setRoomType] = useState<RoomType>('default');
   const [password, setPassword] = useState('');
@@ -333,13 +322,6 @@ export default function SetupPage() {
     sessionStorage.setItem(`vortex-username-${sessionId}`, nameInput.trim());
     sessionStorage.setItem(`vortex-avatar-style-${sessionId}`, AVATAR_STYLE);
     sessionStorage.setItem(`vortex-avatar-seed-${sessionId}`, avatarSeed);
-    
-    // Remember name for future sessions
-    try {
-      localStorage.setItem(REMEMBERED_NAME_STORAGE_KEY, nameInput.trim());
-    } catch {
-      // ignore
-    }
 
     const sessionDocRef = doc(firestore, 'sessions', sessionId);
     const newSessionData: any = {
@@ -676,39 +658,24 @@ export default function SetupPage() {
                   I confirm that I am at least 13 years old
                 </span>
                 <span className="block mt-1 text-muted-foreground">
-                  I also agree to the{' '}
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setShowTermsModal(true);
-                    }}
-                    className="underline text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
-                  >
-                    Terms of Service
-                  </button>
-                  {' '}and{' '}
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setShowPrivacyModal(true);
-                    }}
-                    className="underline text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
-                  >
-                    Privacy Policy
-                  </button>
-                  .
+                  I also agree to the Terms of Service and Privacy Policy.
                 </span>
               </label>
             </div>
-            <div className="flex gap-2">
-              <Button type="button" variant="ghost" className="flex-1" onClick={() => router.push('/')}>
+            <div className="flex items-center gap-2">
+              <Button type="button" variant="outline" size="sm" onClick={() => setShowTermsModal(true)}>
+                Terms of Service
+              </Button>
+              <Button type="button" variant="outline" size="sm" onClick={() => setShowPrivacyModal(true)}>
+                Privacy Policy
+              </Button>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="ghost" onClick={() => router.push('/')}>
                 Leave
               </Button>
               <Button
                 type="button"
-                className="flex-1"
                 disabled={!consentChecked}
                 onClick={() => {
                   try {
