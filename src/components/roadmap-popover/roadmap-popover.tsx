@@ -31,6 +31,7 @@ import {
   Radio,
   Globe,
   CheckCircle2,
+  UserPlus,
 } from 'lucide-react';
 import { useIsMobile } from '@/hooks/use-mobile';
 
@@ -45,6 +46,7 @@ const ROADMAP_FEATURES: RoadmapFeature[] = [
   { icon: Lock, label: 'E2E Message Encryption', status: 'done' as const },
   { icon: Radio, label: 'SFU (Scalable Voice/Video)', status: 'planned' as const },
   { icon: Globe, label: 'TURN Server (NAT Traversal)', status: 'planned' as const },
+  { icon: UserPlus, label: 'Invite Only Rooms', status: 'planned' as const },
   { icon: Paintbrush, label: 'Custom Themes', status: 'planned' as const },
   { icon: Camera, label: 'Camera / Video Chat', status: 'planned' as const },
   { icon: ImagePlus, label: 'Image and Video in Chat', status: 'planned' as const },
