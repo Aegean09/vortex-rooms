@@ -31,7 +31,7 @@ export default function HomePage() {
   };
 
   return (
-    <main className="flex min-h-[100svh] flex-col items-center justify-center px-4 py-8 sm:p-8">
+    <main className="flex h-full flex-col items-center justify-center px-4 py-8 sm:p-8 overflow-auto">
       <div className="absolute inset-0 -z-10 h-full w-full bg-background bg-[radial-gradient(#2f2f33_1px,transparent_1px)] [background-size:32px_32px]"></div>
       <Card className="mb-28 w-full max-w-md shadow-2xl bg-card/80 backdrop-blur-sm border-primary/20 sm:mb-0">
         <CardHeader className="text-center">
@@ -71,7 +71,7 @@ export default function HomePage() {
         </CardContent>
       </Card>
 
-      <footer className="fixed bottom-[calc(env(safe-area-inset-bottom)+0.75rem)] left-0 right-0 flex flex-col items-center">
+      <footer className="absolute bottom-4 left-0 right-0 flex flex-col items-center">
         <RoadmapPopover />
         <div className="mt-3 flex items-center gap-3 text-xs text-muted-foreground">
           <a href="/terms" className="hover:text-foreground transition-colors">Terms</a>
