@@ -384,8 +384,8 @@ export default function SessionPage() {
       localPeerId={authUser.uid}
       subSessionId={currentUser?.subSessionId ?? 'general'}
     >
-      <VpnWarning />
-      <main className="relative flex h-screen w-full flex-col p-2 md:p-4 bg-background gap-4">
+      <VpnWarning redirectOnDismiss />
+      <main className="relative flex h-full w-full flex-col p-2 md:p-4 bg-background gap-4 overflow-hidden">
         <div className="absolute inset-0 -z-10 h-full w-full bg-background bg-[radial-gradient(#2f2f33_1px,transparent_1px)] [background-size:32px_32px]"></div>
 
         <header className="flex md:hidden items-center justify-between p-2 rounded-lg bg-card/50 border border-border">

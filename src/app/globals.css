@@ -88,6 +88,10 @@
   * {
     @apply border-border;
   }
+  html, body {
+    height: 100%;
+    overflow: hidden;
+  }
   html {
     /* Enable safe area insets for mobile devices */
     padding-top: env(safe-area-inset-top);
@@ -97,7 +101,5 @@
   }
   body {
     @apply bg-background text-foreground;
-    min-height: 100vh;
-    min-height: 100dvh; /* Dynamic viewport height for mobile */
   }
 }
