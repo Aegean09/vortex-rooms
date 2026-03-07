@@ -1,19 +1,68 @@
+const createAudioContext = (): AudioContext | null => {
+  try {
+    return new (window.AudioContext || (window as any).webkitAudioContext)();
+  } catch {
+    return null;
+  }
+};
+
+// Two rising tones (C5 → E5)
 export const playJoinSound = () => {
-  const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-  if (!audioContext) return;
+  const ctx = createAudioContext();
+  if (!ctx) return;
 
-  const oscillator = audioContext.createOscillator();
-  const gainNode = audioContext.createGain();
+  const gain = ctx.createGain();
+  gain.connect(ctx.destination);
+  gain.gain.setValueAtTime(0.1, ctx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.25);
 
-  oscillator.type = 'sine';
-  oscillator.frequency.setValueAtTime(880, audioContext.currentTime);
-  gainNode.gain.setValueAtTime(0.1, audioContext.currentTime);
+  const osc = ctx.createOscillator();
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(523.25, ctx.currentTime); // C5
+  osc.frequency.setValueAtTime(659.25, ctx.currentTime + 0.1); // E5
+  osc.connect(gain);
+  osc.start(ctx.currentTime);
+  osc.stop(ctx.currentTime + 0.25);
+  osc.onended = () => ctx.close();
+};
 
-  oscillator.connect(gainNode);
-  gainNode.connect(audioContext.destination);
+// Two falling tones (E5 → C5)
+export const playLeaveSound = () => {
+  const ctx = createAudioContext();
+  if (!ctx) return;
 
-  oscillator.start();
-  oscillator.stop(audioContext.currentTime + 0.1);
+  const gain = ctx.createGain();
+  gain.connect(ctx.destination);
+  gain.gain.setValueAtTime(0.08, ctx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.25);
+
+  const osc = ctx.createOscillator();
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(659.25, ctx.currentTime); // E5
+  osc.frequency.setValueAtTime(523.25, ctx.currentTime + 0.1); // C5
+  osc.connect(gain);
+  osc.start(ctx.currentTime);
+  osc.stop(ctx.currentTime + 0.25);
+  osc.onended = () => ctx.close();
+};
+
+// Quick blip (G5)
+export const playChannelSwitchSound = () => {
+  const ctx = createAudioContext();
+  if (!ctx) return;
+
+  const gain = ctx.createGain();
+  gain.connect(ctx.destination);
+  gain.gain.setValueAtTime(0.08, ctx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.15);
+
+  const osc = ctx.createOscillator();
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(783.99, ctx.currentTime); // G5
+  osc.connect(gain);
+  osc.start(ctx.currentTime);
+  osc.stop(ctx.currentTime + 0.15);
+  osc.onended = () => ctx.close();
 };
 
 export const getKeyDisplayName = (keyCode: string): string => {
