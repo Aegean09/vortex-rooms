@@ -111,6 +111,22 @@ service cloud.firestore {
       allow delete: if isParticipant(sessionId);
     }
 
+    match /sessions/{sessionId}/invites/{inviteId} {
+      allow get, list: if isParticipant(sessionId)
+                    || (isSignedIn() && get(/databases/$(database)/documents/sessions/$(sessionId)).data.createdBy == request.auth.uid);
+      allow create: if isSignedIn()
+                    && request.resource.data.keys().hasOnly(['token', 'maxUses', 'usedCount', 'usedBy', 'createdAt', 'createdBy'])
+                    && request.resource.data.createdBy == request.auth.uid
+                    && request.resource.data.token is string
+                    && request.resource.data.maxUses is number
+                    && request.resource.data.maxUses >= 1
+                    && request.resource.data.maxUses <= 50
+                    && request.resource.data.usedCount == 0;
+      allow delete: if isSignedIn()
+                    && get(/databases/$(database)/documents/sessions/$(sessionId)).data.createdBy == request.auth.uid;
+      allow update: if false;
+    }
+
     // E2E keys: any participant can read (list/get). Client enforces joinedAt so new joiners
     // don't use keys created before they joined; server-side joinedAt check was removed to avoid
     // race where list runs before user doc is visible to rules.

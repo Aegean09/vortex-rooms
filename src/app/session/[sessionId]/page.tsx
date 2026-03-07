@@ -5,6 +5,7 @@ import dynamic from 'next/dynamic';
 import { ChatArea } from '@/components/chat-area/chat-area';
 import { SubSessionList } from '@/components/subsession-list/subsession-list';
 import { ShareLink } from '@/components/share-link/share-link';
+import InviteManager from '@/components/invite-manager/invite-manager';
 import { Lobby } from '@/components/lobby/lobby';
 import { ScreenShareView } from '@/components/screen-share-view/screen-share-view';
 import { RoomNotFound } from '@/components/room-not-found/room-not-found';
@@ -388,9 +389,11 @@ export default function SessionPage() {
       <main className="relative flex h-full w-full flex-col p-2 md:p-4 bg-background gap-4 overflow-hidden">
         <div className="absolute inset-0 -z-10 h-full w-full bg-background bg-[radial-gradient(#2f2f33_1px,transparent_1px)] [background-size:32px_32px]"></div>
 
-        <header className="flex md:hidden items-center justify-between p-2 rounded-lg bg-card/50 border border-border">
-          <ShareLink />
-        </header>
+        {sessionData?.roomType !== 'invite-only' && (
+          <header className="flex md:hidden items-center justify-between p-2 rounded-lg bg-card/50 border border-border">
+            <ShareLink />
+          </header>
+        )}
 
         <div className="block md:hidden">
           <Sheet>
@@ -434,7 +437,8 @@ export default function SessionPage() {
               </div>
               <span className="text-xl font-bold tracking-tight text-primary">Vortex</span>
             </div>
-            <ShareLink />
+            {sessionData?.roomType !== 'invite-only' && <ShareLink />}
+            {isCreator && sessionData?.roomType === 'invite-only' && <InviteManager />}
             <SubSessionList
               subSessions={sortedSubSessions}
               users={users || []}

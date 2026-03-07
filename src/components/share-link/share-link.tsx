@@ -5,7 +5,7 @@ import { useParams } from 'next/navigation';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Copy, Link as LinkIcon, Lock, Users } from 'lucide-react';
+import { Copy, Link as LinkIcon, Lock, Users, UserPlus } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { useFirestore, useMemoFirebase, useDoc } from '@/firebase';
 import { doc } from 'firebase/firestore';
@@ -45,6 +45,12 @@ export function ShareLink() {
               <Badge variant="outline" className="text-xs">
                 <Lock className="h-3 w-3 mr-1" />
                 Protected
+              </Badge>
+            )}
+            {sessionData.roomType === 'invite-only' && (
+              <Badge variant="outline" className="text-xs">
+                <UserPlus className="h-3 w-3 mr-1" />
+                Invite Only
               </Badge>
             )}
             {sessionData.maxUsers && (

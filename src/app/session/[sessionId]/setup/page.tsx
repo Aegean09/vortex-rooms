@@ -5,12 +5,13 @@ import { useRouter, useParams } from 'next/navigation';
 import { useAuth, useUser, useFirestore, setDocumentNonBlocking, useMemoFirebase, useDoc } from '@/firebase';
 import { doc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { callSetRoomPassword, callVerifyRoomPassword } from '@/firebase/room-password-callables';
+import { callRedeemInvite } from '@/firebase/invite-callables';
 import { initiateAnonymousSignIn } from '@/firebase/non-blocking-login';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { ArrowLeft, User as UserIcon, Mic, AlertCircle, Lock, Unlock, Users, Sparkles, ShieldCheck, Eye, EyeOff } from 'lucide-react';
+import { ArrowLeft, User as UserIcon, Mic, AlertCircle, Lock, Unlock, Users, Sparkles, ShieldCheck, Eye, EyeOff, UserPlus, ShieldX } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { TermsContent } from '@/components/legal/terms-content';
@@ -21,12 +22,13 @@ import { generateRandomSeed, AVATAR_STYLE } from '@/helpers/avatar-helpers';
 import { USER_NAME_MAX_LENGTH, ROOM_PASSWORD_MAX_LENGTH } from '@/constants/common';
 import { cn } from '@/lib/utils';
 
-type RoomType = 'default' | 'custom';
+type RoomType = 'default' | 'custom' | 'invite-only';
 
 type StepId = 'password' | 'name' | 'room' | 'audio';
 
 const MIC_PERMISSION_STORAGE_KEY = 'vortex-mic-permission-granted-v1';
 const LEGAL_CONSENT_STORAGE_KEY = 'vortex-legal-consent-v1';
+const USERNAME_STORAGE_KEY = 'vortex-last-username';
 
 export default function SetupPage() {
   const router = useRouter();
@@ -35,7 +37,13 @@ export default function SetupPage() {
   const auth = useAuth();
   const firestore = useFirestore();
   const { user: authUser, isUserLoading } = useUser();
-  const [nameInput, setNameInput] = useState('');
+  const [nameInput, setNameInput] = useState(() => {
+    try {
+      return localStorage.getItem(USERNAME_STORAGE_KEY) ?? '';
+    } catch {
+      return '';
+    }
+  });
   const [avatarSeed] = useState<string>(() => generateRandomSeed());
   const [roomType, setRoomType] = useState<RoomType>('default');
   const [password, setPassword] = useState('');
@@ -53,8 +61,11 @@ export default function SetupPage() {
   const [showCreatePassword, setShowCreatePassword] = useState(false);
   const [showTermsModal, setShowTermsModal] = useState(false);
   const [showPrivacyModal, setShowPrivacyModal] = useState(false);
+  const [inviteOnlyGate, setInviteOnlyGate] = useState(false);
   const { toast } = useToast();
 
+  const [audioInputDevices, setAudioInputDevices] = useState<MediaDeviceInfo[]>([]);
+  const [selectedDeviceId, setSelectedDeviceId] = useState<string>('');
   const localStreamRef = useRef<MediaStream | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
@@ -69,6 +80,7 @@ export default function SetupPage() {
 
   const isCreating = !sessionData;
   const needsPassword = requiresPassword && (sessionData?.requiresPassword || sessionData?.password);
+  const isInviteOnly = sessionData?.roomType === 'invite-only';
 
   const steps: StepId[] = isCreating
     ? ['name', 'room', 'audio']
@@ -94,7 +106,17 @@ export default function SetupPage() {
         setCurrentStepIndex(0);
       }
     }
-  }, [sessionData, requiresPassword, authUser]);
+    // Invite-only gate: block non-creators without a stored invite token
+    if (sessionData?.roomType === 'invite-only' && authUser) {
+      const isCreator = sessionData.createdBy === authUser.uid;
+      const hasToken = !!sessionStorage.getItem(`vortex-invite-token-${sessionId}`);
+      if (!isCreator && !hasToken) {
+        setInviteOnlyGate(true);
+      } else {
+        setInviteOnlyGate(false);
+      }
+    }
+  }, [sessionData, requiresPassword, authUser, sessionId]);
 
   useEffect(() => {
     if (!isUserLoading && !authUser && auth) {
@@ -200,10 +222,24 @@ export default function SetupPage() {
     updateVolume();
   }, []);
 
-  const requestMicPermission = useCallback(async () => {
+  const enumerateAudioDevices = useCallback(async () => {
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const audioInputs = devices.filter(d => d.kind === 'audioinput' && d.deviceId);
+      setAudioInputDevices(audioInputs);
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  const requestMicPermission = useCallback(async (deviceId?: string) => {
     cleanupAudio();
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      const constraints: MediaStreamConstraints = {
+        audio: deviceId ? { deviceId: { exact: deviceId } } : true,
+        video: false,
+      };
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
       localStreamRef.current = stream;
       setMicPermission('granted');
       try {
@@ -212,6 +248,13 @@ export default function SetupPage() {
         // ignore
       }
       startAudioProcessing(stream);
+      await enumerateAudioDevices();
+
+      if (!deviceId) {
+        const activeTrack = stream.getAudioTracks()[0];
+        const activeDeviceId = activeTrack?.getSettings()?.deviceId;
+        if (activeDeviceId) setSelectedDeviceId(activeDeviceId);
+      }
     } catch {
       setMicPermission('denied');
       try {
@@ -220,7 +263,12 @@ export default function SetupPage() {
         // ignore
       }
     }
-  }, [cleanupAudio, startAudioProcessing]);
+  }, [cleanupAudio, startAudioProcessing, enumerateAudioDevices]);
+
+  const handleDeviceChange = useCallback((deviceId: string) => {
+    setSelectedDeviceId(deviceId);
+    requestMicPermission(deviceId);
+  }, [requestMicPermission]);
 
   useEffect(() => () => cleanupAudio(), [cleanupAudio]);
 
@@ -302,6 +350,41 @@ export default function SetupPage() {
       }
     }
 
+    // Invite-only: redeem token before joining
+    if (sessionData?.roomType === 'invite-only') {
+      const isCreator = sessionData.createdBy === authUser.uid;
+      if (!isCreator) {
+        const inviteToken = sessionStorage.getItem(`vortex-invite-token-${sessionId}`);
+        if (!inviteToken) {
+          setInviteOnlyGate(true);
+          setIsJoining(false);
+          return;
+        }
+        try {
+          const result = await callRedeemInvite(sessionId, inviteToken);
+          if (!result.ok) {
+            toast({
+              variant: 'destructive',
+              title: 'Invalid Invite',
+              description: result.reason || 'This invite link is no longer valid.',
+            });
+            sessionStorage.removeItem(`vortex-invite-token-${sessionId}`);
+            setInviteOnlyGate(true);
+            setIsJoining(false);
+            return;
+          }
+        } catch {
+          toast({
+            variant: 'destructive',
+            title: 'Error',
+            description: 'Could not validate invite. Please try again.',
+          });
+          setIsJoining(false);
+          return;
+        }
+      }
+    }
+
     setIsJoining(true);
     const existingMaxUsers = sessionData?.maxUsers;
     const currentParticipantCount = sessionData?.participantCount ?? 0;
@@ -322,6 +405,11 @@ export default function SetupPage() {
     sessionStorage.setItem(`vortex-username-${sessionId}`, nameInput.trim());
     sessionStorage.setItem(`vortex-avatar-style-${sessionId}`, AVATAR_STYLE);
     sessionStorage.setItem(`vortex-avatar-seed-${sessionId}`, avatarSeed);
+    try {
+      localStorage.setItem(USERNAME_STORAGE_KEY, nameInput.trim());
+    } catch {
+      // ignore
+    }
 
     const sessionDocRef = doc(firestore, 'sessions', sessionId);
     const newSessionData: any = {
@@ -336,8 +424,13 @@ export default function SetupPage() {
       newSessionData.e2eEnabled = true;
       if (roomType === 'custom') {
         newSessionData.requiresPassword = true;
+        newSessionData.roomType = 'private';
         newSessionData.maxUsers = Number(maxUsers);
         newSessionData.participantCount = 0;
+      } else if (roomType === 'invite-only') {
+        newSessionData.roomType = 'invite-only';
+      } else {
+        newSessionData.roomType = 'public';
       }
     }
 
@@ -355,6 +448,8 @@ export default function SetupPage() {
           setIsJoining(false);
           return;
         }
+      } else if (roomType === 'invite-only') {
+        await setDoc(sessionDocRef, newSessionData, { merge: true });
       } else {
         setDocumentNonBlocking(sessionDocRef, newSessionData, { merge: true });
       }
@@ -385,6 +480,31 @@ export default function SetupPage() {
           </p>
         </div>
       </div>
+    );
+  }
+
+  if (inviteOnlyGate) {
+    return (
+      <main className="flex min-h-screen flex-col items-center justify-center p-4 sm:p-8">
+        <div className="absolute inset-0 -z-10 h-full w-full bg-background bg-[radial-gradient(#2f2f33_1px,transparent_1px)] [background-size:32px_32px]"></div>
+        <Card className="w-full max-w-md shadow-2xl bg-card/80 backdrop-blur-sm border-primary/20">
+          <CardHeader className="text-center pt-12 sm:pt-8">
+            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-primary/10">
+              <ShieldX className="h-8 w-8 text-primary" />
+            </div>
+            <CardTitle className="text-2xl font-bold">Invite Only Room</CardTitle>
+            <CardDescription className="text-muted-foreground pt-2">
+              This room is invite only. Ask the host for an invite link to join.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex justify-center pb-8">
+            <Button onClick={() => router.push('/')} variant="outline">
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              Go Home
+            </Button>
+          </CardContent>
+        </Card>
+      </main>
     );
   }
 
@@ -479,12 +599,12 @@ export default function SetupPage() {
               )}
             >
               <Label className="text-sm font-medium">Room Type</Label>
-              <div className="flex justify-center gap-3">
+              <div className="flex justify-center gap-2">
                 <button
                   type="button"
                   onClick={() => setRoomType('default')}
                   className={cn(
-                    'flex flex-col items-center justify-center gap-1 px-4 rounded-xl border-2 transition-all duration-200 flex-1 h-[70px]',
+                    'flex flex-col items-center justify-center gap-1 px-3 rounded-xl border-2 transition-all duration-200 flex-1 h-[70px]',
                     roomType === 'default'
                       ? 'border-primary bg-primary/10'
                       : 'border-border hover:border-primary/50 hover:bg-muted/30'
@@ -500,7 +620,7 @@ export default function SetupPage() {
                   type="button"
                   onClick={() => setRoomType('custom')}
                   className={cn(
-                    'flex flex-col items-center justify-center gap-1 px-4 rounded-xl border-2 transition-all duration-200 flex-1 h-[70px]',
+                    'flex flex-col items-center justify-center gap-1 px-3 rounded-xl border-2 transition-all duration-200 flex-1 h-[70px]',
                     roomType === 'custom'
                       ? 'border-primary bg-primary/10'
                       : 'border-border hover:border-primary/50 hover:bg-muted/30'
@@ -510,7 +630,23 @@ export default function SetupPage() {
                     <Lock className={cn('h-5 w-5 flex-shrink-0', roomType === 'custom' ? 'text-primary' : 'text-muted-foreground')} />
                     <span className="font-medium text-sm">Private</span>
                   </div>
-                  <span className="text-[10px] text-muted-foreground leading-tight text-center">Password & User Limit</span>
+                  <span className="text-[10px] text-muted-foreground leading-tight text-center">Password & Limit</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRoomType('invite-only')}
+                  className={cn(
+                    'flex flex-col items-center justify-center gap-1 px-3 rounded-xl border-2 transition-all duration-200 flex-1 h-[70px]',
+                    roomType === 'invite-only'
+                      ? 'border-primary bg-primary/10'
+                      : 'border-border hover:border-primary/50 hover:bg-muted/30'
+                  )}
+                >
+                  <div className="flex flex-row items-center gap-2">
+                    <UserPlus className={cn('h-5 w-5 flex-shrink-0', roomType === 'invite-only' ? 'text-primary' : 'text-muted-foreground')} />
+                    <span className="font-medium text-sm">Invite</span>
+                  </div>
+                  <span className="text-[10px] text-muted-foreground leading-tight text-center">Invite link only</span>
                 </button>
               </div>
 
@@ -583,12 +719,28 @@ export default function SetupPage() {
                 Test Microphone
               </Label>
               {micPermission === 'prompt' && (
-                <Button size="sm" onClick={requestMicPermission} className="w-full">
+                <Button size="sm" onClick={() => requestMicPermission()} className="w-full">
                   <Mic className="mr-2 h-4 w-4" /> Allow Microphone
                 </Button>
               )}
               {micPermission === 'granted' && (
-                <div className="space-y-2">
+                <div className="space-y-3">
+                  {audioInputDevices.length > 0 && (
+                    <div className="space-y-1.5">
+                      <Label className="text-xs text-muted-foreground">Input Device</Label>
+                      <select
+                        value={selectedDeviceId}
+                        onChange={(e) => handleDeviceChange(e.target.value)}
+                        className="w-full h-9 rounded-md border border-input bg-background px-2 text-xs ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      >
+                        {audioInputDevices.map((device) => (
+                          <option key={device.deviceId} value={device.deviceId}>
+                            {device.label || `Microphone ${device.deviceId.slice(0, 8)}`}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
                   {localStreamRef.current ? (
                     <>
                       <p className="text-xs text-muted-foreground">Speak into your mic to test</p>
