@@ -13,7 +13,7 @@ import { createPeerConnection, createOffer, handleOffer } from './webrtc';
 import { useUser, useCollection, useMemoFirebase } from '@/firebase';
 import { User } from '@/interfaces/session';
 import { usePushToTalk } from './hooks/use-push-to-talk';
-import { useMuteShortcut } from './hooks/use-mute-shortcut';
+import { useMuteShortcut, loadShortcuts, saveShortcuts, type ShortcutBinding } from './hooks/use-mute-shortcut';
 import { useMobileBackgroundRecovery } from './hooks/use-mobile-background-recovery';
 import { useRemoteVoiceActivity } from './hooks/use-remote-voice-activity';
 import { useLocalVoiceActivity } from './hooks/use-local-voice-activity';
@@ -70,6 +70,10 @@ interface WebRTCContextType {
   setSelectedDeviceId: (deviceId: string) => void;
   reconnectMicrophone: () => Promise<void>;
   bandwidthStats: BandwidthStats;
+  muteShortcut: ShortcutBinding;
+  deafenShortcut: ShortcutBinding;
+  setMuteShortcut: (shortcut: ShortcutBinding) => void;
+  setDeafenShortcut: (shortcut: ShortcutBinding) => void;
 }
 
 const WebRTCContext = createContext<WebRTCContextType | undefined>(undefined);
@@ -128,6 +132,7 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
   const [noiseSuppressionIntensity, setNoiseSuppressionIntensity] = useState<number>(1);
   const [audioInputDevices, setAudioInputDevices] = useState<MediaDeviceInfo[]>([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState<string>('');
+  const [shortcuts, setShortcuts] = useState(() => loadShortcuts());
   const [remoteVolumes, setRemoteVolumes] = useState<Record<string, number>>({});
   const remoteAudioNodesRef = useRef<Record<string, RemoteAudioNodes>>({});
   const remoteAudioElementsRef = useRef<Record<string, HTMLAudioElement | null>>({});
@@ -466,10 +471,28 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
     }
   }, [isMuted, isDeafened, toggleMute]);
 
-  // Global mute/deafen shortcuts (M and D keys)
+  const setMuteShortcut = useCallback((s: ShortcutBinding) => {
+    setShortcuts(prev => {
+      const next = { ...prev, mute: s };
+      saveShortcuts(next.mute, next.deafen);
+      return next;
+    });
+  }, []);
+
+  const setDeafenShortcut = useCallback((s: ShortcutBinding) => {
+    setShortcuts(prev => {
+      const next = { ...prev, deafen: s };
+      saveShortcuts(next.mute, next.deafen);
+      return next;
+    });
+  }, []);
+
+  // Global mute/deafen shortcuts (Ctrl+Shift+M / Ctrl+Shift+D by default)
   useMuteShortcut({
     toggleMute,
     toggleDeafen,
+    muteShortcut: shortcuts.mute,
+    deafenShortcut: shortcuts.deafen,
     enabled: !pushToTalk, // Disable when push-to-talk is active
   });
 
@@ -1159,6 +1182,10 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
       setSelectedDeviceId,
       reconnectMicrophone,
       bandwidthStats,
+      muteShortcut: shortcuts.mute,
+      deafenShortcut: shortcuts.deafen,
+      setMuteShortcut,
+      setDeafenShortcut,
     }}>
       {children}
       {Object.entries(remoteStreams).map(([peerId, stream]) => (

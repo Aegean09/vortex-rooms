@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
-import { Mic, MicOff, Headphones, PhoneOff, HeadphoneOff, ScreenShare, ScreenShareOff, Settings2, Radio, RefreshCw, Shuffle, Pencil } from 'lucide-react';
+import { Mic, MicOff, Headphones, PhoneOff, HeadphoneOff, ScreenShare, ScreenShareOff, Radio, RefreshCw, Shuffle, Pencil, ChevronUp, Keyboard } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -32,10 +32,72 @@ import { Slider } from '@/components/ui/slider';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { getKeyDisplayName, rmsToPercent, percentToRms } from '@/helpers/audio-helpers';
 import { BandwidthIndicator } from '@/components/bandwidth-indicator/bandwidth-indicator';
+import { formatShortcut, type ShortcutBinding } from '@/lib/webrtc/hooks/use-mute-shortcut';
 
 interface VoiceControlsProps {
   currentUser: User | null;
   onAvatarChange?: (newSeed: string) => void;
+}
+
+function ShortcutRecorder({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: ShortcutBinding;
+  onChange: (binding: ShortcutBinding) => void;
+}) {
+  const [isRecording, setIsRecording] = useState(false);
+
+  useEffect(() => {
+    if (!isRecording) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (['Control', 'Shift', 'Alt', 'Meta'].includes(event.key)) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+
+      onChange({
+        key: event.code,
+        ctrl: event.ctrlKey || event.metaKey,
+        shift: event.shiftKey,
+        alt: event.altKey,
+      });
+      setIsRecording(false);
+    };
+
+    const handleBlur = () => setIsRecording(false);
+
+    window.addEventListener('keydown', handleKeyDown, true);
+    window.addEventListener('blur', handleBlur);
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown, true);
+      window.removeEventListener('blur', handleBlur);
+    };
+  }, [isRecording, onChange]);
+
+  return (
+    <div className="flex items-center justify-between gap-2">
+      <span className="text-xs text-muted-foreground">{label}</span>
+      <Button
+        variant="outline"
+        size="sm"
+        className="h-6 px-2 text-xs font-mono min-w-[80px]"
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setIsRecording(true);
+        }}
+      >
+        {isRecording ? 'Press keys...' : formatShortcut(value)}
+      </Button>
+    </div>
+  );
 }
 
 export function VoiceControls({ currentUser, onAvatarChange }: VoiceControlsProps) {
@@ -62,6 +124,10 @@ export function VoiceControls({ currentUser, onAvatarChange }: VoiceControlsProp
     setSelectedDeviceId,
     reconnectMicrophone,
     bandwidthStats,
+    muteShortcut,
+    deafenShortcut,
+    setMuteShortcut,
+    setDeafenShortcut,
   } = useWebRTC();
   const [hasMicPermission, setHasMicPermission] = useState(false);
   const [voiceActivity, setVoiceActivity] = useState(false);
@@ -278,16 +344,234 @@ export function VoiceControls({ currentUser, onAvatarChange }: VoiceControlsProp
         </div>
         <div className="flex items-center gap-2">
           {showBandwidthIndicator && <BandwidthIndicator stats={bandwidthStats} />}
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button variant={isMuted ? 'destructive' : 'secondary'} size="icon" onClick={handleToggleMute} disabled={!localStream}>
-                {isMuted ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>
-              <p>{isMuted ? 'Unmute' : 'Mute'}</p>
-            </TooltipContent>
-          </Tooltip>
+
+          {/* Mute button with settings dropdown */}
+          <div className="flex items-center">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant={isMuted ? 'destructive' : 'secondary'}
+                  size="icon"
+                  onClick={handleToggleMute}
+                  disabled={!localStream}
+                  className="rounded-r-none border-r border-r-background/20"
+                >
+                  {isMuted ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>{isMuted ? 'Unmute' : 'Mute'} ({formatShortcut(muteShortcut)})</p>
+              </TooltipContent>
+            </Tooltip>
+            <Popover>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant={isMuted ? 'destructive' : 'secondary'}
+                      size="icon"
+                      className="rounded-l-none w-5 px-0"
+                    >
+                      <ChevronUp className="h-3 w-3" />
+                    </Button>
+                  </PopoverTrigger>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Voice Settings</p>
+                </TooltipContent>
+              </Tooltip>
+
+              <PopoverContent className="w-80 max-h-[70vh] overflow-y-auto" side="top" align="end">
+                <div className="space-y-4">
+                  <div className="space-y-3">
+                    <h4 className="font-medium text-sm flex items-center gap-2">
+                      <Mic className="h-4 w-4" />
+                      Mic Settings
+                    </h4>
+                    {audioInputDevices.length > 0 && (
+                      <div className="space-y-1.5">
+                        <Label className="text-xs text-muted-foreground">Input Device</Label>
+                        <select
+                          value={selectedDeviceId}
+                          onChange={(e) => setSelectedDeviceId(e.target.value)}
+                          className="w-full h-8 rounded-md border border-input bg-background px-2 text-xs ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        >
+                          {audioInputDevices.map((device) => (
+                            <option key={device.deviceId} value={device.deviceId}>
+                              {device.label || `Microphone ${device.deviceId.slice(0, 8)}`}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="w-full text-xs gap-2"
+                      onClick={reconnectMicrophone}
+                    >
+                      <RefreshCw className="h-3 w-3" />
+                      Reconnect Microphone
+                    </Button>
+                  </div>
+
+                  <div className="space-y-2 pt-2 border-t">
+                    <h4 className="font-medium text-sm">Noise Gate</h4>
+                    <p className="text-xs text-muted-foreground">
+                      Filters background noise. Sounds below the green threshold line won't be transmitted.
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-xs text-muted-foreground">
+                      <span>Input Level</span>
+                      <span className={cn(
+                        "font-mono",
+                        voiceActivity ? "text-green-400" : "text-muted-foreground"
+                      )}>
+                        {voiceActivity ? "ACTIVE" : "IDLE"}
+                      </span>
+                    </div>
+                    <div className="relative h-6 bg-secondary rounded-md overflow-hidden">
+                      <div
+                        className={cn(
+                          "absolute inset-y-0 left-0 transition-all duration-75",
+                          voiceActivity
+                            ? "bg-gradient-to-r from-green-500 to-green-400"
+                            : "bg-gradient-to-r from-muted-foreground/50 to-muted-foreground/30"
+                        )}
+                        style={{ width: `${levelPercent}%` }}
+                      />
+                      <div
+                        className="absolute inset-y-0 w-0.5 bg-primary shadow-[0_0_8px_rgba(125,249,255,0.5)]"
+                        style={{ left: `${thresholdPercent}%` }}
+                      />
+                      <div
+                        className="absolute -top-5 text-[10px] text-primary font-medium transform -translate-x-1/2"
+                        style={{ left: `${thresholdPercent}%` }}
+                      >
+                        Threshold
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3 pt-2">
+                    <div className="flex justify-between text-xs">
+                      <span className="text-muted-foreground">Sensitivity</span>
+                      <span className="font-mono text-primary">{thresholdPercent}%</span>
+                    </div>
+                    <Slider
+                      value={[thresholdPercent]}
+                      onValueChange={([value]) => {
+                        setNoiseGateThreshold(percentToRms(value));
+                      }}
+                      min={0}
+                      max={100}
+                      step={1}
+                      className="w-full"
+                    />
+                    <div className="flex justify-between text-[10px] text-muted-foreground">
+                      <span>Quiet Environment</span>
+                      <span>Noisy Environment</span>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3 pt-2 border-t">
+                    <div className="flex items-center justify-between">
+                      <div className="space-y-0.5">
+                        <Label htmlFor="noise-suppression" className="text-sm font-medium">
+                          Noise Suppression
+                        </Label>
+                        <p className="text-xs text-muted-foreground">
+                          Reduces background noise (keyboard, fan). On or off.
+                        </p>
+                      </div>
+                      <Switch
+                        id="noise-suppression"
+                        checked={noiseSuppressionEnabled}
+                        onCheckedChange={setNoiseSuppressionEnabled}
+                      />
+                    </div>
+                  </div>
+
+                  {!isMobile && (
+                    <div className="space-y-3 pt-2 border-t">
+                      <div className="flex items-center justify-between">
+                        <div className="space-y-0.5">
+                          <Label htmlFor="push-to-talk" className="text-sm font-medium flex items-center gap-2">
+                            <Radio className="h-4 w-4" />
+                            Push to Talk
+                          </Label>
+                          <p className="text-xs text-muted-foreground">
+                            Hold key to speak
+                          </p>
+                        </div>
+                        <Switch
+                          id="push-to-talk"
+                          checked={pushToTalk}
+                          onCheckedChange={setPushToTalk}
+                        />
+                      </div>
+                      {pushToTalk && (
+                        <div className="space-y-2">
+                          <Label htmlFor="push-to-talk-key" className="text-xs text-muted-foreground">
+                            Push to Talk Key
+                          </Label>
+                          {isRecordingKey ? (
+                            <div className="space-y-2">
+                              <Button
+                                variant="outline"
+                                className="w-full h-8 text-xs"
+                                disabled
+                              >
+                                Recording...
+                              </Button>
+                              <p className="text-[10px] text-muted-foreground text-center">
+                                Press a key
+                              </p>
+                            </div>
+                          ) : (
+                            <div className="space-y-2">
+                              <Button
+                                variant="outline"
+                                className="w-full h-8 text-xs"
+                                onClick={() => setIsRecordingKey(true)}
+                              >
+                                {getKeyDisplayName(pushToTalkKey)}
+                              </Button>
+                              <p className="text-[10px] text-muted-foreground text-center">
+                                Hold {getKeyDisplayName(pushToTalkKey)} to speak
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {!isMobile && (
+                    <div className="space-y-3 pt-2 border-t">
+                      <h4 className="font-medium text-sm flex items-center gap-2">
+                        <Keyboard className="h-4 w-4" />
+                        Keyboard Shortcuts
+                      </h4>
+                      <ShortcutRecorder
+                        label="Mute"
+                        value={muteShortcut}
+                        onChange={setMuteShortcut}
+                      />
+                      <ShortcutRecorder
+                        label="Deafen"
+                        value={deafenShortcut}
+                        onChange={setDeafenShortcut}
+                      />
+                    </div>
+                  )}
+                </div>
+              </PopoverContent>
+            </Popover>
+          </div>
+
           <Tooltip>
             <TooltipTrigger asChild>
               <Button variant={isDeafened ? 'destructive' : 'secondary'} size="icon" onClick={handleToggleDeafen}>
@@ -295,194 +579,9 @@ export function VoiceControls({ currentUser, onAvatarChange }: VoiceControlsProp
               </Button>
             </TooltipTrigger>
             <TooltipContent>
-              <p>{isDeafened ? 'Undeafen' : 'Deafen'}</p>
+              <p>{isDeafened ? 'Undeafen' : 'Deafen'} ({formatShortcut(deafenShortcut)})</p>
             </TooltipContent>
           </Tooltip>
-
-          <Popover>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <PopoverTrigger asChild>
-                  <Button variant="secondary" size="icon">
-                    <Settings2 className="h-5 w-5" />
-                  </Button>
-                </PopoverTrigger>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Voice Settings</p>
-              </TooltipContent>
-            </Tooltip>
-
-            <PopoverContent className="w-80 max-h-[70vh] overflow-y-auto" side="top" align="end">
-              <div className="space-y-4">
-                <div className="space-y-3">
-                  <h4 className="font-medium text-sm flex items-center gap-2">
-                    <Mic className="h-4 w-4" />
-                    Mic Settings
-                  </h4>
-                  {audioInputDevices.length > 0 && (
-                    <div className="space-y-1.5">
-                      <Label className="text-xs text-muted-foreground">Input Device</Label>
-                      <select
-                        value={selectedDeviceId}
-                        onChange={(e) => setSelectedDeviceId(e.target.value)}
-                        className="w-full h-8 rounded-md border border-input bg-background px-2 text-xs ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                      >
-                        {audioInputDevices.map((device) => (
-                          <option key={device.deviceId} value={device.deviceId}>
-                            {device.label || `Microphone ${device.deviceId.slice(0, 8)}`}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="w-full text-xs gap-2"
-                    onClick={reconnectMicrophone}
-                  >
-                    <RefreshCw className="h-3 w-3" />
-                    Reconnect Microphone
-                  </Button>
-                </div>
-
-                <div className="space-y-2 pt-2 border-t">
-                  <h4 className="font-medium text-sm">Noise Gate</h4>
-                  <p className="text-xs text-muted-foreground">
-                    Filters background noise. Sounds below the green threshold line won't be transmitted.
-                  </p>
-                </div>
-
-                <div className="space-y-2">
-                  <div className="flex justify-between text-xs text-muted-foreground">
-                    <span>Input Level</span>
-                    <span className={cn(
-                      "font-mono",
-                      voiceActivity ? "text-green-400" : "text-muted-foreground"
-                    )}>
-                      {voiceActivity ? "ACTIVE" : "IDLE"}
-                    </span>
-                  </div>
-                  <div className="relative h-6 bg-secondary rounded-md overflow-hidden">
-                    <div
-                      className={cn(
-                        "absolute inset-y-0 left-0 transition-all duration-75",
-                        voiceActivity
-                          ? "bg-gradient-to-r from-green-500 to-green-400"
-                          : "bg-gradient-to-r from-muted-foreground/50 to-muted-foreground/30"
-                      )}
-                      style={{ width: `${levelPercent}%` }}
-                    />
-                    <div
-                      className="absolute inset-y-0 w-0.5 bg-primary shadow-[0_0_8px_rgba(125,249,255,0.5)]"
-                      style={{ left: `${thresholdPercent}%` }}
-                    />
-                    <div
-                      className="absolute -top-5 text-[10px] text-primary font-medium transform -translate-x-1/2"
-                      style={{ left: `${thresholdPercent}%` }}
-                    >
-                      Threshold
-                    </div>
-                  </div>
-                </div>
-
-                <div className="space-y-3 pt-2">
-                  <div className="flex justify-between text-xs">
-                    <span className="text-muted-foreground">Sensitivity</span>
-                    <span className="font-mono text-primary">{thresholdPercent}%</span>
-                  </div>
-                  <Slider
-                    value={[thresholdPercent]}
-                    onValueChange={([value]) => {
-                      setNoiseGateThreshold(percentToRms(value));
-                    }}
-                    min={0}
-                    max={100}
-                    step={1}
-                    className="w-full"
-                  />
-                  <div className="flex justify-between text-[10px] text-muted-foreground">
-                    <span>Quiet Environment</span>
-                    <span>Noisy Environment</span>
-                  </div>
-                </div>
-
-                <div className="space-y-3 pt-2 border-t">
-                  <div className="flex items-center justify-between">
-                    <div className="space-y-0.5">
-                      <Label htmlFor="noise-suppression" className="text-sm font-medium">
-                        Noise Suppression
-                      </Label>
-                      <p className="text-xs text-muted-foreground">
-                        Reduces background noise (keyboard, fan). On or off.
-                      </p>
-                    </div>
-                    <Switch
-                      id="noise-suppression"
-                      checked={noiseSuppressionEnabled}
-                      onCheckedChange={setNoiseSuppressionEnabled}
-                    />
-                  </div>
-                </div>
-
-                {!isMobile && (
-                  <div className="space-y-3 pt-2 border-t">
-                    <div className="flex items-center justify-between">
-                      <div className="space-y-0.5">
-                        <Label htmlFor="push-to-talk" className="text-sm font-medium flex items-center gap-2">
-                          <Radio className="h-4 w-4" />
-                          Push to Talk
-                        </Label>
-                        <p className="text-xs text-muted-foreground">
-                          Hold key to speak
-                        </p>
-                      </div>
-                      <Switch
-                        id="push-to-talk"
-                        checked={pushToTalk}
-                        onCheckedChange={setPushToTalk}
-                      />
-                    </div>
-                    {pushToTalk && (
-                      <div className="space-y-2">
-                        <Label htmlFor="push-to-talk-key" className="text-xs text-muted-foreground">
-                          Push to Talk Key
-                        </Label>
-                        {isRecordingKey ? (
-                          <div className="space-y-2">
-                            <Button
-                              variant="outline"
-                              className="w-full h-8 text-xs"
-                              disabled
-                            >
-                              Recording...
-                            </Button>
-                            <p className="text-[10px] text-muted-foreground text-center">
-                              Press a key
-                            </p>
-                          </div>
-                        ) : (
-                          <div className="space-y-2">
-                            <Button
-                              variant="outline"
-                              className="w-full h-8 text-xs"
-                              onClick={() => setIsRecordingKey(true)}
-                            >
-                              {getKeyDisplayName(pushToTalkKey)}
-                            </Button>
-                            <p className="text-[10px] text-muted-foreground text-center">
-                              Hold {getKeyDisplayName(pushToTalkKey)} to speak
-                            </p>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            </PopoverContent>
-          </Popover>
 
           {!isMobile && (() => {
             const isDisabled = !isScreenSharing && !!presenterId;
