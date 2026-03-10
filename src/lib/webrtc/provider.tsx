@@ -17,7 +17,7 @@ import { useMuteShortcut, loadShortcuts, saveShortcuts, type ShortcutBinding } f
 import { useMobileBackgroundRecovery } from './hooks/use-mobile-background-recovery';
 import { useRemoteVoiceActivity } from './hooks/use-remote-voice-activity';
 import { useLocalVoiceActivity } from './hooks/use-local-voice-activity';
-import { toggleMuteTracks } from './services/audio-service';
+import { toggleMuteTracks, RNNOISE_AUDIO_CONSTRAINTS } from './services/audio-service';
 import {
   createAudioNodesWithNoiseSuppression,
   updateNoiseSuppressionIntensity,
@@ -568,13 +568,17 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
     }
   }, [selectedDeviceId]);
 
-  const getMediaWithDevice = useCallback(async (deviceId?: string) => {
+  const getMediaWithDevice = useCallback(async (deviceId?: string, rnnoiseActive?: boolean) => {
     try {
-      const audioConstraints: MediaTrackConstraints = {
+      // When RNNoise WASM is active, disable browser-native noiseSuppression
+      // to avoid double processing which causes robotic audio under CPU load.
+      const useRnnoiseConstraints = rnnoiseActive ?? noiseSuppressionEnabled;
+      const baseConstraints = useRnnoiseConstraints ? RNNOISE_AUDIO_CONSTRAINTS : {
         echoCancellation: true,
         noiseSuppression: true,
         autoGainControl: true,
       };
+      const audioConstraints: MediaTrackConstraints = { ...baseConstraints };
       if (deviceId) {
         audioConstraints.deviceId = { exact: deviceId };
       }
@@ -591,7 +595,7 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
     } catch {
       return null;
     }
-  }, []);
+  }, [noiseSuppressionEnabled]);
 
   const reconnectMicrophone = useCallback(async () => {
     rawStream?.getTracks().forEach(track => track.stop());

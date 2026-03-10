@@ -100,6 +100,26 @@ export interface NoiseSuppressionNodes {
   destination: MediaStreamAudioDestinationNode;
 }
 
+/**
+ * Disable browser-native noiseSuppression on raw audio tracks when RNNoise
+ * is active. Running both simultaneously doubles the CPU work on the audio
+ * thread and causes robotic audio under load (e.g. GPU-heavy games).
+ */
+const applyNativeNoiseSuppressionConstraint = (
+  rawStream: MediaStream,
+  rnnoiseEnabled: boolean
+): void => {
+  for (const track of rawStream.getAudioTracks()) {
+    try {
+      track.applyConstraints({
+        noiseSuppression: !rnnoiseEnabled,
+      }).catch(() => {});
+    } catch {
+      // applyConstraints not supported — safe to ignore
+    }
+  }
+};
+
 export const createAudioNodesWithNoiseSuppression = async (
   rawStream: MediaStream,
   config: NoiseGateConfig,
@@ -117,6 +137,8 @@ export const createAudioNodesWithNoiseSuppression = async (
   let workletNode: (AudioWorkletNode & { destroy?: () => void }) | null = null;
 
   if (noiseSuppressionConfig.enabled) {
+    // Disable browser-native noiseSuppression to avoid double processing
+    applyNativeNoiseSuppressionConstraint(rawStream, true);
     try {
       const { loadRnnoise, RnnoiseWorkletNode } = await loadNoiseSuppressionModule();
       const wasmBinary = await loadRnnoise({
@@ -133,10 +155,14 @@ export const createAudioNodesWithNoiseSuppression = async (
       rnnoise.connect(analyser);
       rnnoise.connect(gainNode);
     } catch {
+      // RNNoise failed — re-enable native suppression as fallback
+      applyNativeNoiseSuppressionConstraint(rawStream, false);
       source.connect(analyser);
       source.connect(gainNode);
     }
   } else {
+    // Ensure native suppression is enabled when RNNoise is off
+    applyNativeNoiseSuppressionConstraint(rawStream, false);
     source.connect(analyser);
     source.connect(gainNode);
   }
@@ -205,6 +231,13 @@ export const reconnectNoiseSuppressionOnExistingPipeline = async (
     nodes.workletNode.disconnect();
   }
 
+  // Toggle browser-native noiseSuppression based on RNNoise state
+  // to avoid double processing under CPU load
+  const rawStream = nodes.source.mediaStream;
+  if (rawStream) {
+    applyNativeNoiseSuppressionConstraint(rawStream, enabled);
+  }
+
   let workletNode: (AudioWorkletNode & { destroy?: () => void }) | null = null;
 
   if (enabled) {
@@ -224,6 +257,10 @@ export const reconnectNoiseSuppressionOnExistingPipeline = async (
       rnnoise.connect(nodes.analyser);
       rnnoise.connect(nodes.gainNode);
     } catch {
+      // RNNoise failed — re-enable native suppression as fallback
+      if (rawStream) {
+        applyNativeNoiseSuppressionConstraint(rawStream, false);
+      }
       nodes.source.connect(nodes.analyser);
       nodes.source.connect(nodes.gainNode);
     }
