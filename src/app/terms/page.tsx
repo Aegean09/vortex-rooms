@@ -8,8 +8,8 @@ export const metadata = {
 
 export default function TermsPage() {
   return (
-    <main className="min-h-screen bg-background text-foreground">
-      <div className="mx-auto max-w-2xl px-6 py-16">
+    <main className="h-full overflow-y-auto bg-background text-foreground">
+      <div className="mx-auto max-w-2xl px-6 py-16 pb-[calc(1rem+var(--safe-area-bottom))]">
         <Link href="/" className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground mb-8">
           <ArrowLeft className="h-4 w-4" />
           Back to Vortex

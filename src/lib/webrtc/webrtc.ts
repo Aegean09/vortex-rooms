@@ -132,6 +132,62 @@ export const createPeerConnection = (
   return pc;
 };
 
+/**
+ * Munge SDP to set Opus parameters for CPU-efficient voice encoding.
+ *
+ * - ptime=40: process 40ms frames instead of 20ms, halving encode frequency.
+ *   Adds ~20ms latency — imperceptible for voice chat, massive CPU saving.
+ * - maxaveragebitrate=32000: cap at 32kbps (Opus voice sweet spot).
+ * - useinbandfec=1: enable forward error correction for packet loss resilience.
+ * - cbr=1: constant bitrate prevents CPU spikes on complex audio segments.
+ *
+ * Only modifies the Opus fmtp line; leaves other codecs untouched.
+ */
+const mungeOpusSdp = (sdp: string | undefined): string | undefined => {
+  if (!sdp) return sdp;
+
+  // Find the Opus payload type from the rtpmap line
+  const opusMatch = sdp.match(/a=rtpmap:(\d+) opus\/48000/);
+  if (!opusMatch) return sdp;
+  const opusPayloadType = opusMatch[1];
+
+  // Build regex for the Opus fmtp line
+  const fmtpRegex = new RegExp(`(a=fmtp:${opusPayloadType} [^\\r\\n]*)`);
+  const fmtpMatch = sdp.match(fmtpRegex);
+
+  const opusParams = 'maxaveragebitrate=32000;useinbandfec=1;cbr=1';
+
+  if (fmtpMatch) {
+    // Append our params to existing fmtp line, avoiding duplicates
+    let fmtpLine = fmtpMatch[1];
+    for (const param of opusParams.split(';')) {
+      const key = param.split('=')[0];
+      if (!fmtpLine.includes(key)) {
+        fmtpLine += `;${param}`;
+      }
+    }
+    sdp = sdp.replace(fmtpRegex, fmtpLine);
+  } else {
+    // Insert fmtp line after rtpmap
+    const rtpmapLine = `a=rtpmap:${opusPayloadType} opus/48000/2`;
+    sdp = sdp.replace(
+      rtpmapLine,
+      `${rtpmapLine}\r\na=fmtp:${opusPayloadType} minptime=10;useinbandfec=1;${opusParams}`
+    );
+  }
+
+  // Add ptime attribute if not present (applies to all audio codecs but Opus respects it)
+  if (!sdp.includes('a=ptime:')) {
+    // Insert after the first m=audio line
+    sdp = sdp.replace(/(m=audio [^\r\n]+)/, '$1\r\na=ptime:40');
+  } else {
+    // Update existing ptime to 40
+    sdp = sdp.replace(/a=ptime:\d+/, 'a=ptime:40');
+  }
+
+  return sdp;
+};
+
 const flushPendingCandidates = (pc: PeerConnectionWithUnsubscribe) => {
   if (pc.pendingCandidates?.length) {
     for (const candidate of pc.pendingCandidates) {
@@ -183,6 +239,9 @@ export const createOffer = async (
     return;
   }
 
+  // Munge SDP to optimize Opus for CPU efficiency (ptime=40, cbr, FEC)
+  offerDescription.sdp = mungeOpusSdp(offerDescription.sdp);
+
   await pc.setLocalDescription(offerDescription);
 
   const offer = {
@@ -212,6 +271,10 @@ export const handleOffer = async (
     }
 
     const answerDescription = await pc.createAnswer();
+
+    // Munge SDP to optimize Opus for CPU efficiency (ptime=40, cbr, FEC)
+    answerDescription.sdp = mungeOpusSdp(answerDescription.sdp);
+
     await pc.setLocalDescription(answerDescription);
 
     const answer = {

@@ -10,6 +10,17 @@ const DEFAULT_AUDIO_CONSTRAINTS: AudioConstraints = {
   autoGainControl: true,
 };
 
+/**
+ * Constraints to use when RNNoise WASM noise suppression is active.
+ * Browser-native noiseSuppression is disabled to avoid double processing
+ * which compounds CPU load and causes robotic audio under pressure.
+ */
+export const RNNOISE_AUDIO_CONSTRAINTS: AudioConstraints = {
+  echoCancellation: true,
+  noiseSuppression: false,
+  autoGainControl: true,
+};
+
 export const getUserMedia = async (
   constraints: AudioConstraints = DEFAULT_AUDIO_CONSTRAINTS
 ): Promise<MediaStream> => {

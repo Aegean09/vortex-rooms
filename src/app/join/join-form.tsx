@@ -104,9 +104,12 @@ export default function JoinForm() {
               onChange={(e) => setSessionId(filterRoomCodeInput(e.target.value))}
               placeholder="e.g. f1HtWx9k2LmQ"
               title="Characters 'l' and 'I' are not used in room codes"
+              name="room-code"
               maxLength={ROOM_CODE_LENGTH}
               className="text-center text-lg tracking-[0.5em] h-12"
-              autoComplete="off"
+              autoComplete="one-time-code"
+              data-1p-ignore
+              data-lpignore="true"
             />
             <Button
               type="submit"
