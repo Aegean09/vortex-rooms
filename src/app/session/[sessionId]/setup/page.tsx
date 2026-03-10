@@ -539,12 +539,15 @@ export default function SetupPage() {
                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
                   id="room-password"
+                  name="room-access-code"
                   type={showRoomPassword ? 'text' : 'password'}
                   value={roomPassword}
                   onChange={(e) => setRoomPassword(e.target.value)}
                   placeholder="Enter room password"
                   className="pl-10 pr-10 h-12 text-base border-0 focus-visible:ring-0 focus-visible:ring-offset-0"
-                  autoComplete="off"
+                  autoComplete="one-time-code"
+                  data-1p-ignore
+                  data-lpignore="true"
                   autoFocus={currentStep === 'password'}
                   onKeyDown={(e) => e.key === 'Enter' && roomPassword.trim() && handleAdvance()}
                 />
@@ -569,18 +572,21 @@ export default function SetupPage() {
                 currentStep === 'name' ? 'animate-in fade-in slide-in-from-top-2' : 'opacity-70'
               )}
             >
-              <Label htmlFor="name" className="text-sm font-medium">
+              <Label htmlFor="display-alias" className="text-sm font-medium">
                 Your Name
               </Label>
               <div className="relative">
                 <UserIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
-                  id="name"
+                  id="display-alias"
+                  name="display-alias"
                   value={nameInput}
                   onChange={(e) => setNameInput(e.target.value)}
                   placeholder="Your cool name"
                   className="pl-10 h-12 text-base border-0 focus-visible:ring-0 focus-visible:ring-offset-0"
-                  autoComplete="off"
+                  autoComplete="one-time-code"
+                  data-1p-ignore
+                  data-lpignore="true"
                   minLength={2}
                   maxLength={USER_NAME_MAX_LENGTH}
                   autoFocus={currentStep === 'name'}
@@ -657,19 +663,23 @@ export default function SetupPage() {
                 )}
               >
                   <div className="grid gap-2">
-                    <Label htmlFor="password" className="flex items-center gap-2 text-sm">
+                    <Label htmlFor="room-secret" className="flex items-center gap-2 text-sm">
                       <Lock className="h-4 w-4" />
                       Password <span className="text-destructive">*</span>
                     </Label>
                     <div className="relative">
                       <Input
-                        id="password"
+                        id="room-secret"
+                        name="room-secret"
                         type={showCreatePassword ? 'text' : 'password'}
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
                         placeholder="Enter password"
                         maxLength={ROOM_PASSWORD_MAX_LENGTH}
                         className="h-10 pr-10 border-0 focus-visible:ring-0 focus-visible:ring-offset-0"
+                        autoComplete="one-time-code"
+                        data-1p-ignore
+                        data-lpignore="true"
                       />
                       <button
                         type="button"
@@ -688,8 +698,12 @@ export default function SetupPage() {
                     </Label>
                     <Input
                       id="max-users"
+                      name="room-capacity"
                       type="text"
                       inputMode="numeric"
+                      autoComplete="one-time-code"
+                      data-1p-ignore
+                      data-lpignore="true"
                       value={maxUsers}
                       onChange={(e) => {
                         const value = e.target.value;
