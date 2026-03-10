@@ -42,6 +42,12 @@
     "longDescription": "Vortex - Ephemeral voice and text chat rooms powered by WebRTC"
   },
   "plugins": {
+    "deep-link": {
+      "mobile": [],
+      "desktop": {
+        "schemes": ["vortex"]
+      }
+    },
     "updater": {
       "endpoints": [
         "https://github.com/Aegean09/vortex-rooms/releases/latest/download/latest.json"

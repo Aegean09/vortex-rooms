@@ -1,12 +1,64 @@
 "use client";
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useAuth, useUser } from '@/firebase';
 import { initiateAnonymousSignIn } from '@/firebase/non-blocking-login';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { AlertCircle, Loader2 } from 'lucide-react';
+
+/**
+ * Check if we're running inside the Tauri desktop WebView.
+ */
+function isTauri(): boolean {
+  return typeof window !== 'undefined' && '__TAURI__' in window;
+}
+
+/**
+ * Attempt to open the invite via the vortex:// deep-link scheme.
+ * If the desktop app is installed, the OS will hand off to it.
+ * Returns a promise that resolves to true if the handoff likely succeeded
+ * (page lost visibility), or false if it timed out (app not installed).
+ */
+function tryDesktopDeepLink(sessionId: string, inviteToken: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    const deepLinkUrl = `vortex://session/${sessionId}/invite/${inviteToken}`;
+    const startTime = Date.now();
+    let resolved = false;
+
+    const handleBlur = () => {
+      // If the page lost focus quickly, the OS likely opened the desktop app
+      if (!resolved && Date.now() - startTime < 3000) {
+        resolved = true;
+        resolve(true);
+      }
+    };
+
+    window.addEventListener('blur', handleBlur, { once: true });
+
+    // Create a hidden iframe to attempt the deep link without navigating away
+    const iframe = document.createElement('iframe');
+    iframe.style.display = 'none';
+    iframe.src = deepLinkUrl;
+    document.body.appendChild(iframe);
+
+    // Also try window.location as a fallback for some browsers
+    setTimeout(() => {
+      window.location.href = deepLinkUrl;
+    }, 100);
+
+    // If nothing happens after 1.5s, the app is probably not installed
+    setTimeout(() => {
+      window.removeEventListener('blur', handleBlur);
+      document.body.removeChild(iframe);
+      if (!resolved) {
+        resolved = true;
+        resolve(false);
+      }
+    }, 1500);
+  });
+}
 
 export default function InvitePage() {
   const router = useRouter();
@@ -16,14 +68,42 @@ export default function InvitePage() {
   const auth = useAuth();
   const { user: authUser, isUserLoading } = useUser();
   const [error, setError] = useState<string | null>(null);
+  const [deepLinkAttempted, setDeepLinkAttempted] = useState(false);
+  const deepLinkTriedRef = useRef(false);
 
+  // Attempt deep-link handoff to the desktop app (browser only, not inside Tauri)
   useEffect(() => {
+    if (isTauri() || deepLinkTriedRef.current) {
+      setDeepLinkAttempted(true);
+      return;
+    }
+    if (!sessionId || !inviteToken) {
+      setDeepLinkAttempted(true);
+      return;
+    }
+
+    deepLinkTriedRef.current = true;
+
+    tryDesktopDeepLink(sessionId, inviteToken).then((opened) => {
+      if (!opened) {
+        // Desktop app not installed or didn't respond — continue with web flow
+        setDeepLinkAttempted(true);
+      }
+      // If opened === true, the desktop app took over; the page stays in loading state
+    });
+  }, [sessionId, inviteToken]);
+
+  // Anonymous auth sign-in
+  useEffect(() => {
+    if (!deepLinkAttempted) return;
     if (!isUserLoading && !authUser && auth) {
       initiateAnonymousSignIn(auth);
     }
-  }, [authUser, isUserLoading, auth]);
+  }, [authUser, isUserLoading, auth, deepLinkAttempted]);
 
+  // Store token and redirect to setup (web flow)
   useEffect(() => {
+    if (!deepLinkAttempted) return;
     if (!sessionId || !inviteToken) {
       setError('Invalid invite link.');
       return;
@@ -33,7 +113,7 @@ export default function InvitePage() {
     // Store the invite token and redirect to setup
     sessionStorage.setItem(`vortex-invite-token-${sessionId}`, inviteToken);
     router.replace(`/session/${sessionId}/setup`);
-  }, [sessionId, inviteToken, authUser, isUserLoading, router]);
+  }, [sessionId, inviteToken, authUser, isUserLoading, router, deepLinkAttempted]);
 
   if (error) {
     return (
@@ -59,7 +139,9 @@ export default function InvitePage() {
     <div className="flex h-screen w-full items-center justify-center bg-background">
       <div className="flex flex-col items-center gap-4">
         <Loader2 className="h-16 w-16 animate-spin text-primary" />
-        <p className="text-lg text-muted-foreground">Validating invite...</p>
+        <p className="text-lg text-muted-foreground">
+          {deepLinkAttempted ? 'Validating invite...' : 'Opening Vortex...'}
+        </p>
       </div>
     </div>
   );
