@@ -13,6 +13,7 @@ import { DiceBearAvatar } from '@/components/dicebear-avatar/dicebear-avatar';
 import { MESSAGE_CONTENT_MAX_LENGTH } from '@/constants/common';
 import { useToast } from '@/hooks/use-toast';
 import { ReportDialog, type ReportType } from '@/components/report-dialog/report-dialog';
+import { cn } from '@/lib/utils';
 
 interface ChatAreaProps {
   messages: Message[];
@@ -22,6 +23,16 @@ interface ChatAreaProps {
   sessionId?: string;
   authUserId?: string;
   firestore?: Firestore | null;
+  typingUsers?: string[];
+  onInputChange?: () => void;
+}
+
+function formatTypingText(names: string[]): string {
+  if (names.length === 0) return '';
+  if (names.length === 1) return `${names[0]} is typing...`;
+  if (names.length === 2) return `${names[0]} and ${names[1]} are typing...`;
+  const othersCount = names.length - 2;
+  return `${names[0]}, ${names[1]}, and ${othersCount} ${othersCount === 1 ? 'other' : 'others'} are typing...`;
 }
 
 export function ChatArea({
@@ -32,6 +43,8 @@ export function ChatArea({
   sessionId,
   authUserId,
   firestore,
+  typingUsers = [],
+  onInputChange,
 }: ChatAreaProps) {
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const [newMessage, setNewMessage] = React.useState('');
@@ -269,6 +282,21 @@ export function ChatArea({
           </div>
         )}
       </ScrollArea>
+      <div
+        className={cn(
+          'overflow-hidden transition-all duration-200 ease-in-out px-4',
+          typingUsers.length > 0 ? 'max-h-6 opacity-100 pt-1.5' : 'max-h-0 opacity-0'
+        )}
+      >
+        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <span className="inline-flex gap-0.5" aria-hidden="true">
+            <span className="h-1 w-1 rounded-full bg-primary/60 animate-typing-dot" />
+            <span className="h-1 w-1 rounded-full bg-primary/60 animate-typing-dot" style={{ animationDelay: '0.2s' }} />
+            <span className="h-1 w-1 rounded-full bg-primary/60 animate-typing-dot" style={{ animationDelay: '0.4s' }} />
+          </span>
+          <span>{formatTypingText(typingUsers)}</span>
+        </div>
+      </div>
       <div className="p-4 border-t border-border">
         {!canSendMessage && (
           <p className="text-xs text-muted-foreground mb-2">Encryption loading…</p>
@@ -276,7 +304,10 @@ export function ChatArea({
         <form onSubmit={handleSendMessage} className="flex items-center gap-2">
           <Input
             value={newMessage}
-            onChange={(e) => setNewMessage(e.target.value)}
+            onChange={(e) => {
+              setNewMessage(e.target.value);
+              if (e.target.value.trim()) onInputChange?.();
+            }}
             placeholder={canSendMessage ? `Message #${channelName}...` : 'Wait for encryption…'}
             autoComplete="off"
             maxLength={MESSAGE_CONTENT_MAX_LENGTH}

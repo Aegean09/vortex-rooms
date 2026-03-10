@@ -33,6 +33,7 @@ import {
   useProcessedMessages,
   useSubSessionManager,
   useTextChannelManager,
+  useTypingIndicator,
 } from './hooks';
 import { useFirestore } from '@/firebase';
 import { useE2ESession } from '@/lib/e2e';
@@ -322,6 +323,19 @@ export default function SessionPage() {
     e2e: e2eHelpers,
   });
 
+  const { typingUsers, onInputChange: onTypingInputChange, onMessageSent: onTypingMessageSent } = useTypingIndicator({
+    firestore,
+    authUser,
+    sessionId,
+    activeTextChannelId,
+    users,
+  });
+
+  const handleSendMessageWithTyping = useCallback((text: string) => {
+    handleSendMessage(text);
+    onTypingMessageSent();
+  }, [handleSendMessage, onTypingMessageSent]);
+
   const [showScreenShare, setShowScreenShare] = useState(false);
   const [localAvatarSeed, setLocalAvatarSeed] = useState<string | null>(null);
 
@@ -476,12 +490,14 @@ export default function SessionPage() {
             <div className={cn("flex-1 min-h-0", { "hidden": isSomeoneScreenSharing && showScreenShare })}>
               <ChatArea
                 messages={messages}
-                onSendMessage={handleSendMessage}
+                onSendMessage={handleSendMessageWithTyping}
                 channelName={activeTextChannelName}
                 canSendMessage={canSendMessage}
                 sessionId={sessionId}
                 authUserId={authUser?.uid}
                 firestore={firestore}
+                typingUsers={typingUsers}
+                onInputChange={onTypingInputChange}
               />
             </div>
             {isSomeoneScreenSharing && showScreenShare && (

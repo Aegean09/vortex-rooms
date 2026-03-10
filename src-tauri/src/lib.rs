@@ -8,11 +8,16 @@ use tauri::{
     tray::TrayIconBuilder,
 };
 
+/// Parsed deep-link route information.
+enum DeepLinkRoute {
+    /// An invite route: session ID and invite token.
+    Invite { session_id: String, invite_token: String },
+}
+
 /// Parse a deep-link URL (e.g. `vortex://session/ABC123/invite/TOKEN456`)
 /// or a web URL (e.g. `https://vortex-rooms.com/session/ABC123/invite/TOKEN456`)
-/// into a relative path that the WebView can navigate to.
-/// Returns `None` if the URL doesn't match a known route.
-fn parse_deep_link_path(raw_url: &str) -> Option<String> {
+/// into a structured route. Returns `None` if the URL doesn't match a known route.
+fn parse_deep_link_route(raw_url: &str) -> Option<DeepLinkRoute> {
     // Handle vortex:// scheme — url crate may not parse opaque schemes well,
     // so normalise to https:// first for reliable path parsing.
     let normalised = if raw_url.starts_with("vortex://") {
@@ -33,27 +38,38 @@ fn parse_deep_link_path(raw_url: &str) -> Option<String> {
         && !segments[1].is_empty()
         && !segments[3].is_empty()
     {
-        Some(format!(
-            "/session/{}/invite/{}",
-            segments[1], segments[3]
-        ))
+        Some(DeepLinkRoute::Invite {
+            session_id: segments[1].to_string(),
+            invite_token: segments[3].to_string(),
+        })
     } else {
         None
     }
 }
 
-/// Focus the main window and navigate to the given path.
-fn focus_and_navigate(app: &tauri::AppHandle, path: &str) {
+/// Focus the main window and navigate based on the parsed route.
+/// For invite routes, stores the invite token in sessionStorage and
+/// navigates directly to `/session/{id}/setup`, bypassing the invite page
+/// entirely. This prevents the double-redirect loop where the invite page's
+/// deep-link logic would fire again inside the Tauri WebView.
+fn focus_and_navigate(app: &tauri::AppHandle, route: &DeepLinkRoute) {
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.unminimize();
         let _ = window.show();
         let _ = window.set_focus();
 
-        let nav_url = format!("https://vortex-rooms.com{}", path);
-        let js = format!(
-            "window.location.href = '{}';",
-            nav_url.replace('\'', "\\'")
-        );
+        let js = match route {
+            DeepLinkRoute::Invite { session_id, invite_token } => {
+                // Store the invite token in sessionStorage (same key the invite page uses),
+                // then navigate directly to the setup page — skipping the invite page entirely.
+                format!(
+                    "sessionStorage.setItem('vortex-invite-token-{}', '{}'); window.location.href = 'https://vortex-rooms.com/session/{}/setup';",
+                    session_id.replace('\'', "\\'"),
+                    invite_token.replace('\'', "\\'"),
+                    session_id.replace('\'', "\\'")
+                )
+            }
+        };
         let _ = window.eval(&js);
     }
 }
@@ -61,8 +77,8 @@ fn focus_and_navigate(app: &tauri::AppHandle, path: &str) {
 /// Process a list of deep-link URLs, navigating to the first valid one.
 fn handle_deep_link_urls(app: &tauri::AppHandle, urls: Vec<Url>) {
     for url in urls {
-        if let Some(path) = parse_deep_link_path(url.as_str()) {
-            focus_and_navigate(app, &path);
+        if let Some(route) = parse_deep_link_route(url.as_str()) {
+            focus_and_navigate(app, &route);
             break;
         }
     }
@@ -71,10 +87,12 @@ fn handle_deep_link_urls(app: &tauri::AppHandle, urls: Vec<Url>) {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let builder = tauri::Builder::default()
-        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_deep_link::init());
+
+    #[cfg(desktop)]
+    let builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
 
     #[cfg(desktop)]
     let builder = builder.plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
@@ -89,8 +107,8 @@ pub fn run() {
 
         // argv[0] is the executable path; look for a deep-link URL in remaining args
         for arg in argv.iter().skip(1) {
-            if let Some(path) = parse_deep_link_path(arg) {
-                focus_and_navigate(app, &path);
+            if let Some(route) = parse_deep_link_route(arg) {
+                focus_and_navigate(app, &route);
                 break;
             }
         }

@@ -16,6 +16,10 @@ export interface User {
   encryptedAvatarSeed?: string;
   /** Updated every 15s; used to detect and clean up stale/crashed clients. */
   lastSeen?: Timestamp;
+  /** Text channel ID the user is currently typing in, or null/undefined if not typing. */
+  typingInChannel?: string | null;
+  /** When the user last typed (for expiring stale indicators). */
+  typingAt?: Timestamp | null;
 }
 
 export interface SubSession {

@@ -623,6 +623,17 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
         audioNodesRef.current.audioContext.resume().catch(() => {});
       }
     }, []),
+    onBackgroundAutoMute: useCallback(() => {
+      // Auto-mute when mobile app goes to background (screen lock)
+      // Update local state so UI reflects muted status on return
+      setIsMuted(true);
+
+      // Update Firestore so remote peers see the user as muted
+      if (firestore && user) {
+        const userDocRef = doc(firestore, 'sessions', sessionId, 'users', user.uid);
+        updateDoc(userDocRef, { isMuted: true }).catch(() => {});
+      }
+    }, [firestore, user, sessionId]),
   });
 
   // Listen for audio resume events from mobile recovery
