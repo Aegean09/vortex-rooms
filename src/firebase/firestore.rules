@@ -67,6 +67,16 @@ service cloud.firestore {
       let s = get(/databases/$(database)/documents/sessions/$(sessionId)).data;
       return s.get('maxUsers', 999) == null || s.get('participantCount', 0) < s.get('maxUsers', 999);
     }
+    /**
+     * isApprovedForInviteRoom
+     * For invite-only rooms, checks that the user's UID is in the session's approvedUsers array
+     * (populated by the redeemInvite Cloud Function). Public and password rooms are unaffected.
+     */
+    function isApprovedForInviteRoom(sessionId) {
+      let s = get(/databases/$(database)/documents/sessions/$(sessionId)).data;
+      return s.get('roomType', 'public') != 'invite-only'
+          || request.auth.uid in s.get('approvedUsers', []);
+    }
     match /sessions/{sessionId}/users/{userId} {
       allow get: if isParticipant(sessionId) || (isSignedIn() && userId == request.auth.uid);
       allow list: if isParticipant(sessionId);
@@ -74,7 +84,8 @@ service cloud.firestore {
                     && request.resource.data.sessionId == sessionId
                     && request.resource.data.id == userId
                     && isValidUserName()
-                    && isRoomUnderCapacity(sessionId);
+                    && isRoomUnderCapacity(sessionId)
+                    && isApprovedForInviteRoom(sessionId);
       allow update: if isOwner(userId) && isExistingDoc()
                     && request.resource.data.sessionId == resource.data.sessionId
                     && request.resource.data.id == resource.data.id

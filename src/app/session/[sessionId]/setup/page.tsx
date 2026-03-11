@@ -429,6 +429,7 @@ export default function SetupPage() {
         newSessionData.participantCount = 0;
       } else if (roomType === 'invite-only') {
         newSessionData.roomType = 'invite-only';
+        newSessionData.approvedUsers = [authUser.uid];
       } else {
         newSessionData.roomType = 'public';
       }
