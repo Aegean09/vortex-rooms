@@ -473,7 +473,7 @@ export default function SetupPage() {
 
   if (isUserLoading || !authUser || isJoining) {
     return (
-      <div className="flex h-screen w-full items-center justify-center bg-background">
+      <div className="flex h-full w-full items-center justify-center bg-background">
         <div className="flex flex-col items-center gap-4">
           <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-primary"></div>
           <p className="text-lg text-muted-foreground">
@@ -486,7 +486,7 @@ export default function SetupPage() {
 
   if (inviteOnlyGate) {
     return (
-      <main className="flex min-h-screen flex-col items-center justify-center p-4 sm:p-8">
+      <main className="flex min-h-full flex-col items-center justify-center p-4 sm:p-8">
         <div className="absolute inset-0 -z-10 h-full w-full bg-background bg-[radial-gradient(#2f2f33_1px,transparent_1px)] [background-size:32px_32px]"></div>
         <Card className="w-full max-w-md shadow-2xl bg-card/80 backdrop-blur-sm border-primary/20">
           <CardHeader className="text-center pt-12 sm:pt-8">
@@ -510,7 +510,7 @@ export default function SetupPage() {
   }
 
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center p-4 sm:p-8">
+    <main className="flex min-h-full flex-col items-center justify-center p-4 sm:p-8">
       <div className="absolute inset-0 -z-10 h-full w-full bg-background bg-[radial-gradient(#2f2f33_1px,transparent_1px)] [background-size:32px_32px]"></div>
       <Card className="relative w-full max-w-lg shadow-2xl bg-card/80 backdrop-blur-sm border-primary/20">
         <Button variant="ghost" size="icon" className="absolute top-4 right-4 h-8 w-8" onClick={() => router.push('/')}>
