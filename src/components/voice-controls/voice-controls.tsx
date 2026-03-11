@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
-import { Mic, MicOff, Headphones, PhoneOff, HeadphoneOff, ScreenShare, ScreenShareOff, Radio, RefreshCw, Shuffle, Pencil, ChevronUp, Keyboard } from 'lucide-react';
+import { Mic, MicOff, Headphones, PhoneOff, HeadphoneOff, ScreenShare, ScreenShareOff, Radio, RefreshCw, Shuffle, Pencil, ChevronUp, Keyboard, Volume2 } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -123,6 +123,9 @@ export function VoiceControls({ currentUser, onAvatarChange }: VoiceControlsProp
     selectedDeviceId,
     setSelectedDeviceId,
     reconnectMicrophone,
+    audioOutputDevices,
+    selectedOutputDeviceId,
+    setSelectedOutputDeviceId,
     bandwidthStats,
     muteShortcut,
     deafenShortcut,
@@ -572,16 +575,62 @@ export function VoiceControls({ currentUser, onAvatarChange }: VoiceControlsProp
             </Popover>
           </div>
 
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button variant={isDeafened ? 'destructive' : 'secondary'} size="icon" onClick={handleToggleDeafen}>
-                {isDeafened ? <HeadphoneOff className="h-5 w-5" /> : <Headphones className="h-5 w-5" />}
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>
-              <p>{isDeafened ? 'Undeafen' : 'Deafen'} ({formatShortcut(deafenShortcut)})</p>
-            </TooltipContent>
-          </Tooltip>
+          <div className="flex items-center">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant={isDeafened ? 'destructive' : 'secondary'}
+                  size="icon"
+                  onClick={handleToggleDeafen}
+                  className={audioOutputDevices.length > 0 ? "rounded-r-none border-r border-r-background/20" : ""}
+                >
+                  {isDeafened ? <HeadphoneOff className="h-5 w-5" /> : <Headphones className="h-5 w-5" />}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>{isDeafened ? 'Undeafen' : 'Deafen'} ({formatShortcut(deafenShortcut)})</p>
+              </TooltipContent>
+            </Tooltip>
+            {audioOutputDevices.length > 0 && (
+              <Popover>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant={isDeafened ? 'destructive' : 'secondary'}
+                        size="icon"
+                        className="rounded-l-none w-5 px-0"
+                      >
+                        <ChevronUp className="h-3 w-3" />
+                      </Button>
+                    </PopoverTrigger>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Output Device</p>
+                  </TooltipContent>
+                </Tooltip>
+                <PopoverContent className="w-72" side="top" align="end">
+                  <div className="space-y-3">
+                    <h4 className="font-medium text-sm flex items-center gap-2">
+                      <Volume2 className="h-4 w-4" />
+                      Output Device
+                    </h4>
+                    <select
+                      value={selectedOutputDeviceId}
+                      onChange={(e) => setSelectedOutputDeviceId(e.target.value)}
+                      className="w-full h-8 rounded-md border border-input bg-background px-2 text-xs ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    >
+                      {audioOutputDevices.map((device) => (
+                        <option key={device.deviceId} value={device.deviceId}>
+                          {device.label || `Speaker ${device.deviceId.slice(0, 8)}`}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </PopoverContent>
+              </Popover>
+            )}
+          </div>
 
           {!isMobile && (() => {
             const isDisabled = !isScreenSharing && !!presenterId;

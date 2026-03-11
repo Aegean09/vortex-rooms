@@ -68,6 +68,9 @@ interface WebRTCContextType {
   audioInputDevices: MediaDeviceInfo[];
   selectedDeviceId: string;
   setSelectedDeviceId: (deviceId: string) => void;
+  audioOutputDevices: MediaDeviceInfo[];
+  selectedOutputDeviceId: string;
+  setSelectedOutputDeviceId: (deviceId: string) => void;
   reconnectMicrophone: () => Promise<void>;
   bandwidthStats: BandwidthStats;
   muteShortcut: ShortcutBinding;
@@ -132,6 +135,8 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
   const [noiseSuppressionIntensity, setNoiseSuppressionIntensity] = useState<number>(1);
   const [audioInputDevices, setAudioInputDevices] = useState<MediaDeviceInfo[]>([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState<string>('');
+  const [audioOutputDevices, setAudioOutputDevices] = useState<MediaDeviceInfo[]>([]);
+  const [selectedOutputDeviceId, setSelectedOutputDeviceId] = useState<string>('');
   const [shortcuts, setShortcuts] = useState(() => loadShortcuts());
   const [remoteVolumes, setRemoteVolumes] = useState<Record<string, number>>({});
   const remoteAudioNodesRef = useRef<Record<string, RemoteAudioNodes>>({});
@@ -563,10 +568,15 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
       if (!selectedDeviceId && audioInputs.length > 0) {
         setSelectedDeviceId(audioInputs[0].deviceId);
       }
+      const audioOutputs = devices.filter(d => d.kind === 'audiooutput');
+      setAudioOutputDevices(audioOutputs);
+      if (!selectedOutputDeviceId && audioOutputs.length > 0) {
+        setSelectedOutputDeviceId(audioOutputs[0].deviceId);
+      }
     } catch {
       // ignore
     }
-  }, [selectedDeviceId]);
+  }, [selectedDeviceId, selectedOutputDeviceId]);
 
   const getMediaWithDevice = useCallback(async (deviceId?: string, rnnoiseActive?: boolean) => {
     try {
@@ -695,6 +705,16 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
 
     switchDevice();
   }, [selectedDeviceId]);
+
+  // Apply output device (setSinkId) to all remote audio elements
+  useEffect(() => {
+    if (!selectedOutputDeviceId) return;
+    Object.values(remoteAudioElementsRef.current).forEach(audio => {
+      if (audio && typeof (audio as any).setSinkId === 'function') {
+        (audio as any).setSinkId(selectedOutputDeviceId).catch(() => {});
+      }
+    });
+  }, [selectedOutputDeviceId, remoteStreams]);
 
   const startNoiseGateLoop = useCallback((nodes: NoiseSuppressionNodes) => {
     if (noiseGateTimerRef.current) {
@@ -1195,6 +1215,9 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
       audioInputDevices,
       selectedDeviceId,
       setSelectedDeviceId,
+      audioOutputDevices,
+      selectedOutputDeviceId,
+      setSelectedOutputDeviceId,
       reconnectMicrophone,
       bandwidthStats,
       muteShortcut: shortcuts.mute,
@@ -1214,6 +1237,9 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
               }
               ensureRemoteAudioNode(peerId, stream);
               applyRemoteAudioState();
+              if (selectedOutputDeviceId && typeof (audio as any).setSinkId === 'function') {
+                (audio as any).setSinkId(selectedOutputDeviceId).catch(() => {});
+              }
               audio.play().catch(() => {});
             } else {
               delete remoteAudioElementsRef.current[peerId];
