@@ -89,6 +89,7 @@
     @apply border-border;
   }
   :root {
+    /* Native Android insets are injected via JS; env() is used as fallback for iOS/web */
     --safe-area-top: env(safe-area-inset-top, 0px);
     --safe-area-bottom: env(safe-area-inset-bottom, 0px);
     --safe-area-left: env(safe-area-inset-left, 0px);
