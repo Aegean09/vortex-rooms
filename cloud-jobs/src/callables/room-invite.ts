@@ -76,11 +76,16 @@ export const redeemInvite = functions.https.onCall(async (data: RedeemInviteData
   }
 
   // Check if user is the creator — they bypass invite check
-  const sessionSnap = await db.doc(`sessions/${sessionId}`).get();
+  const sessionRef = db.doc(`sessions/${sessionId}`);
+  const sessionSnap = await sessionRef.get();
   if (!sessionSnap.exists) {
     return { ok: false, reason: 'Session not found.' };
   }
   if (sessionSnap.data()?.createdBy === context.auth.uid) {
+    // Creator bypass: add to approvedUsers so Firestore rules allow user doc creation
+    await sessionRef.update({
+      approvedUsers: admin.firestore.FieldValue.arrayUnion(context.auth.uid),
+    });
     return { ok: true };
   }
 
@@ -94,26 +99,46 @@ export const redeemInvite = functions.https.onCall(async (data: RedeemInviteData
     return { ok: false, reason: 'Invalid or expired invite link.' };
   }
 
-  const inviteDoc = invitesSnap.docs[0];
-  const inviteData = inviteDoc.data();
+  const inviteRef = invitesSnap.docs[0].ref;
 
-  // Check if user already redeemed
-  if (inviteData.usedBy?.includes(context.auth.uid)) {
-    return { ok: true }; // Already redeemed, allow re-entry
-  }
+  // Use a transaction to atomically check usage limits and increment.
+  // This prevents concurrent requests from exceeding maxUses.
+  const result = await db.runTransaction(async (tx) => {
+    const inviteSnap = await tx.get(inviteRef);
+    if (!inviteSnap.exists) {
+      return { ok: false as const, reason: 'Invalid or expired invite link.' };
+    }
+    const inviteData = inviteSnap.data()!;
 
-  // Check usage limit
-  if (inviteData.usedCount >= inviteData.maxUses) {
-    return { ok: false, reason: 'This invite link has reached its usage limit.' };
-  }
+    // Check if user already redeemed
+    if (inviteData.usedBy?.includes(context.auth!.uid)) {
+      return { ok: true as const }; // Already redeemed, allow re-entry
+    }
 
-  // Redeem: increment count, add uid
-  await inviteDoc.ref.update({
-    usedCount: admin.firestore.FieldValue.increment(1),
-    usedBy: admin.firestore.FieldValue.arrayUnion(context.auth.uid),
+    // Check usage limit
+    if (inviteData.usedCount >= inviteData.maxUses) {
+      return { ok: false as const, reason: 'This invite link has reached its usage limit.' };
+    }
+
+    // Redeem: increment count and add uid atomically within the transaction
+    tx.update(inviteRef, {
+      usedCount: inviteData.usedCount + 1,
+      usedBy: admin.firestore.FieldValue.arrayUnion(context.auth!.uid),
+    });
+
+    return { ok: true as const };
   });
 
-  return { ok: true };
+  // After successful redeem, add user to approvedUsers on session doc.
+  // This is idempotent (arrayUnion) and done outside the transaction since
+  // it operates on a different document.
+  if (result.ok) {
+    await sessionRef.update({
+      approvedUsers: admin.firestore.FieldValue.arrayUnion(context.auth.uid),
+    });
+  }
+
+  return result;
 });
 
 /**

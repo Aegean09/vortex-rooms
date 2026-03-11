@@ -22,6 +22,23 @@ export interface User {
   typingAt?: Timestamp | null;
 }
 
+export interface Session {
+  id: string;
+  createdAt?: Timestamp;
+  lastActive?: Timestamp;
+  createdBy?: string;
+  sessionLink?: string;
+  e2eEnabled?: boolean;
+  roomType?: 'public' | 'private' | 'invite-only';
+  requiresPassword?: boolean;
+  maxUsers?: number;
+  participantCount?: number;
+  /** UIDs approved to join invite-only rooms (managed by redeemInvite Cloud Function). */
+  approvedUsers?: string[];
+  /** @deprecated Legacy plaintext password field — use roomSecrets instead. */
+  password?: string;
+}
+
 export interface SubSession {
   id: string;
   name: string;
