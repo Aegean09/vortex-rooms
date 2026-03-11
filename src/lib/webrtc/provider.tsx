@@ -71,6 +71,9 @@ interface WebRTCContextType {
   audioOutputDevices: MediaDeviceInfo[];
   selectedOutputDeviceId: string;
   setSelectedOutputDeviceId: (deviceId: string) => void;
+  hasAndroidAudioBridge: boolean;
+  androidAudioMode: string;
+  setAndroidOutputMode: (mode: string) => void;
   reconnectMicrophone: () => Promise<void>;
   bandwidthStats: BandwidthStats;
   muteShortcut: ShortcutBinding;
@@ -137,6 +140,7 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
   const [selectedDeviceId, setSelectedDeviceId] = useState<string>('');
   const [audioOutputDevices, setAudioOutputDevices] = useState<MediaDeviceInfo[]>([]);
   const [selectedOutputDeviceId, setSelectedOutputDeviceId] = useState<string>('');
+  const [androidAudioMode, setAndroidAudioMode] = useState<string>('speaker');
   const [shortcuts, setShortcuts] = useState(() => loadShortcuts());
   const [remoteVolumes, setRemoteVolumes] = useState<Record<string, number>>({});
   const remoteAudioNodesRef = useRef<Record<string, RemoteAudioNodes>>({});
@@ -560,6 +564,8 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
     }
   }, [isScreenSharing, firestore, user, sessionId, localPeerId, localStream, presenterId, subSessionId]);
 
+  const hasAndroidAudioBridge = typeof window !== 'undefined' && !!(window as any).VortexAudioRouting;
+
   const enumerateAudioDevices = useCallback(async () => {
     try {
       const devices = await navigator.mediaDevices.enumerateDevices();
@@ -573,10 +579,25 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
       if (!selectedOutputDeviceId && audioOutputs.length > 0) {
         setSelectedOutputDeviceId(audioOutputs[0].deviceId);
       }
+      // Read initial mode from Android native bridge
+      if (hasAndroidAudioBridge) {
+        try {
+          const mode = (window as any).VortexAudioRouting.getOutputMode();
+          setAndroidAudioMode(mode);
+        } catch { /* ignore */ }
+      }
     } catch {
       // ignore
     }
-  }, [selectedDeviceId, selectedOutputDeviceId]);
+  }, [selectedDeviceId, selectedOutputDeviceId, hasAndroidAudioBridge]);
+
+  const setAndroidOutputMode = useCallback((mode: string) => {
+    if (!hasAndroidAudioBridge) return;
+    try {
+      (window as any).VortexAudioRouting.setOutputMode(mode);
+      setAndroidAudioMode(mode);
+    } catch { /* ignore */ }
+  }, [hasAndroidAudioBridge]);
 
   const getMediaWithDevice = useCallback(async (deviceId?: string, rnnoiseActive?: boolean) => {
     try {
@@ -1218,6 +1239,9 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
       audioOutputDevices,
       selectedOutputDeviceId,
       setSelectedOutputDeviceId,
+      hasAndroidAudioBridge,
+      androidAudioMode,
+      setAndroidOutputMode,
       reconnectMicrophone,
       bandwidthStats,
       muteShortcut: shortcuts.mute,

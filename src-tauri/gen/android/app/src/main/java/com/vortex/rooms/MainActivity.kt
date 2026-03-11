@@ -1,8 +1,11 @@
 package com.vortex.rooms
 
 import android.Manifest
+import android.content.Context
 import android.content.pm.PackageManager
+import android.media.AudioManager
 import android.os.Bundle
+import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import androidx.activity.enableEdgeToEdge
 import androidx.core.app.ActivityCompat
@@ -17,16 +20,26 @@ class MainActivity : TauriActivity() {
     }
 
     private var cachedInsetsJs: String? = null
+    private lateinit var audioManager: AudioManager
 
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+
+        audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+
+        // Default to speakerphone so users don't have to hold phone to ear
+        audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
+        audioManager.isSpeakerphoneOn = true
 
         // Request microphone permission at startup so getUserMedia works in WebView
         requestMicrophonePermission()
 
         // Inject safe area insets into the WebView after layout
         setupInsetsInjection()
+
+        // Add JavaScript bridge for audio routing after WebView is available
+        window.decorView.post { setupAudioRoutingBridge() }
     }
 
     private fun requestMicrophonePermission() {
@@ -39,6 +52,12 @@ class MainActivity : TauriActivity() {
                 MIC_PERMISSION_REQUEST_CODE
             )
         }
+    }
+
+    private fun setupAudioRoutingBridge() {
+        val rootView = findViewById<android.view.View>(android.R.id.content)
+        val webView = findWebView(rootView) ?: return
+        webView.addJavascriptInterface(AudioRoutingBridge(audioManager), "VortexAudioRouting")
     }
 
     private fun setupInsetsInjection() {
@@ -83,6 +102,13 @@ class MainActivity : TauriActivity() {
         window.decorView.post { injectInsetsIntoWebView() }
     }
 
+    override fun onDestroy() {
+        super.onDestroy()
+        // Reset audio mode when activity is destroyed
+        audioManager.mode = AudioManager.MODE_NORMAL
+        audioManager.isSpeakerphoneOn = false
+    }
+
     private fun findWebView(view: android.view.View): WebView? {
         if (view is WebView) return view
         if (view is android.view.ViewGroup) {
@@ -92,5 +118,19 @@ class MainActivity : TauriActivity() {
             }
         }
         return null
+    }
+}
+
+class AudioRoutingBridge(private val audioManager: AudioManager) {
+
+    @JavascriptInterface
+    fun getOutputMode(): String {
+        return if (audioManager.isSpeakerphoneOn) "speaker" else "earpiece"
+    }
+
+    @JavascriptInterface
+    fun setOutputMode(mode: String) {
+        audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
+        audioManager.isSpeakerphoneOn = (mode == "speaker")
     }
 }

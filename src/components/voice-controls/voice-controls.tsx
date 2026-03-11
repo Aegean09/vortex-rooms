@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
-import { Mic, MicOff, Headphones, PhoneOff, HeadphoneOff, ScreenShare, ScreenShareOff, Radio, RefreshCw, Shuffle, Pencil, ChevronUp, Keyboard, Volume2 } from 'lucide-react';
+import { Mic, MicOff, Headphones, PhoneOff, HeadphoneOff, ScreenShare, ScreenShareOff, Radio, RefreshCw, Shuffle, Pencil, ChevronUp, Keyboard, Volume2, Speaker, Phone } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -126,6 +126,9 @@ export function VoiceControls({ currentUser, onAvatarChange }: VoiceControlsProp
     audioOutputDevices,
     selectedOutputDeviceId,
     setSelectedOutputDeviceId,
+    hasAndroidAudioBridge,
+    androidAudioMode,
+    setAndroidOutputMode,
     bandwidthStats,
     muteShortcut,
     deafenShortcut,
@@ -582,7 +585,7 @@ export function VoiceControls({ currentUser, onAvatarChange }: VoiceControlsProp
                   variant={isDeafened ? 'destructive' : 'secondary'}
                   size="icon"
                   onClick={handleToggleDeafen}
-                  className={audioOutputDevices.length > 0 ? "rounded-r-none border-r border-r-background/20" : ""}
+                  className={(audioOutputDevices.length > 0 || hasAndroidAudioBridge) ? "rounded-r-none border-r border-r-background/20" : ""}
                 >
                   {isDeafened ? <HeadphoneOff className="h-5 w-5" /> : <Headphones className="h-5 w-5" />}
                 </Button>
@@ -591,7 +594,7 @@ export function VoiceControls({ currentUser, onAvatarChange }: VoiceControlsProp
                 <p>{isDeafened ? 'Undeafen' : 'Deafen'} ({formatShortcut(deafenShortcut)})</p>
               </TooltipContent>
             </Tooltip>
-            {audioOutputDevices.length > 0 && (
+            {(audioOutputDevices.length > 0 || hasAndroidAudioBridge) && (
               <Popover>
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -615,17 +618,40 @@ export function VoiceControls({ currentUser, onAvatarChange }: VoiceControlsProp
                       <Volume2 className="h-4 w-4" />
                       Output Device
                     </h4>
-                    <select
-                      value={selectedOutputDeviceId}
-                      onChange={(e) => setSelectedOutputDeviceId(e.target.value)}
-                      className="w-full h-8 rounded-md border border-input bg-background px-2 text-xs ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    >
-                      {audioOutputDevices.map((device) => (
-                        <option key={device.deviceId} value={device.deviceId}>
-                          {device.label || `Speaker ${device.deviceId.slice(0, 8)}`}
-                        </option>
-                      ))}
-                    </select>
+                    {hasAndroidAudioBridge ? (
+                      <div className="flex gap-2">
+                        <Button
+                          variant={androidAudioMode === 'speaker' ? 'default' : 'outline'}
+                          size="sm"
+                          className="flex-1 gap-2"
+                          onClick={() => setAndroidOutputMode('speaker')}
+                        >
+                          <Speaker className="h-4 w-4" />
+                          Speaker
+                        </Button>
+                        <Button
+                          variant={androidAudioMode === 'earpiece' ? 'default' : 'outline'}
+                          size="sm"
+                          className="flex-1 gap-2"
+                          onClick={() => setAndroidOutputMode('earpiece')}
+                        >
+                          <Phone className="h-4 w-4" />
+                          Earpiece
+                        </Button>
+                      </div>
+                    ) : (
+                      <select
+                        value={selectedOutputDeviceId}
+                        onChange={(e) => setSelectedOutputDeviceId(e.target.value)}
+                        className="w-full h-8 rounded-md border border-input bg-background px-2 text-xs ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      >
+                        {audioOutputDevices.map((device) => (
+                          <option key={device.deviceId} value={device.deviceId}>
+                            {device.label || `Speaker ${device.deviceId.slice(0, 8)}`}
+                          </option>
+                        ))}
+                      </select>
+                    )}
                   </div>
                 </PopoverContent>
               </Popover>
