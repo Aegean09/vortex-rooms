@@ -117,7 +117,7 @@ export default function InvitePage() {
 
   if (error) {
     return (
-      <main className="flex min-h-screen flex-col items-center justify-center p-4">
+      <main className="flex min-h-full flex-col items-center justify-center p-4">
         <div className="absolute inset-0 -z-10 h-full w-full bg-background bg-[radial-gradient(#2f2f33_1px,transparent_1px)] [background-size:32px_32px]" />
         <Card className="w-full max-w-md shadow-2xl bg-card/80 backdrop-blur-sm border-primary/20">
           <CardHeader className="text-center">
@@ -136,7 +136,7 @@ export default function InvitePage() {
   }
 
   return (
-    <div className="flex h-screen w-full items-center justify-center bg-background">
+    <div className="flex h-full w-full items-center justify-center bg-background">
       <div className="flex flex-col items-center gap-4">
         <Loader2 className="h-16 w-16 animate-spin text-primary" />
         <p className="text-lg text-muted-foreground">

@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Vortex",
-  "version": "0.6.0",
+  "version": "0.6.7",
   "identifier": "com.vortex.rooms",
   "build": {
     "frontendDist": "https://vortex-rooms.com",
@@ -51,7 +51,7 @@
       "mobile": [
         {
           "host": "vortex-rooms.com",
-          "pathPrefix": "/session"
+          "pathPrefix": ["/session"]
         }
       ],
       "desktop": {
