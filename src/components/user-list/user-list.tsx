@@ -1,7 +1,7 @@
 "use client";
 
 import { Card, CardContent } from '@/components/ui/card';
-import { useWebRTC } from '@/lib/webrtc/provider';
+import { useWebRTC, useVoiceActivity } from '@/lib/webrtc/provider';
 import { cn } from '@/lib/utils';
 import { MicOff, HeadphoneOff } from 'lucide-react';
 import { type User } from '@/interfaces/session';
@@ -13,7 +13,8 @@ interface UserListProps {
 }
 
 export function UserList({ users, currentUser }: UserListProps) {
-  const { remoteVoiceActivity, localVoiceActivity, isMuted, isDeafened } = useWebRTC();
+  const { isMuted, isDeafened } = useWebRTC();
+  const { remoteVoiceActivity, localVoiceActivity } = useVoiceActivity();
 
   return (
     <Card className="w-full max-w-xs h-full flex flex-col bg-transparent shadow-none border-none">

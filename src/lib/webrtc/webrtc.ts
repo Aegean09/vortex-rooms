@@ -15,10 +15,18 @@ import {
   Unsubscribe,
 } from 'firebase/firestore';
 
-const ICE_SERVERS = {
+const ICE_SERVERS: RTCConfiguration = {
   iceServers: [
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
+    // TURN fallback for symmetric NAT / corporate firewalls
+    ...(process.env.NEXT_PUBLIC_TURN_URL
+      ? [{
+          urls: process.env.NEXT_PUBLIC_TURN_URL,
+          username: process.env.NEXT_PUBLIC_TURN_USERNAME || '',
+          credential: process.env.NEXT_PUBLIC_TURN_CREDENTIAL || '',
+        }]
+      : []),
   ],
 };
 

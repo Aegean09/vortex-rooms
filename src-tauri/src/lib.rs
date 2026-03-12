@@ -54,9 +54,12 @@ fn parse_deep_link_route(raw_url: &str) -> Option<DeepLinkRoute> {
 /// deep-link logic would fire again inside the Tauri WebView.
 fn focus_and_navigate(app: &tauri::AppHandle, route: &DeepLinkRoute) {
     if let Some(window) = app.get_webview_window("main") {
-        let _ = window.unminimize();
-        let _ = window.show();
-        let _ = window.set_focus();
+        #[cfg(desktop)]
+        {
+            let _ = window.unminimize();
+            let _ = window.show();
+            let _ = window.set_focus();
+        }
 
         let js = match route {
             DeepLinkRoute::Invite { session_id, invite_token } => {
