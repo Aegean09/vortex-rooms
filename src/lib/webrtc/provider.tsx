@@ -824,7 +824,7 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
       }
     };
 
-    noiseGateTimerRef.current = setInterval(processNoiseGate, 50);
+    noiseGateTimerRef.current = setInterval(processNoiseGate, 80);
   }, []);
 
   useEffect(() => {

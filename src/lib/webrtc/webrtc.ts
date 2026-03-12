@@ -93,39 +93,35 @@ export const createPeerConnection = (
     }
   };
 
-  pc.oniceconnectionstatechange = () => {
-    // Log state changes for debugging mobile issues
-    console.log(`[WebRTC] ICE state changed: ${pc.iceConnectionState} (peer: ${remotePeerId})`);
-    
-    if (pc.iceConnectionState === 'disconnected' || pc.iceConnectionState === 'failed') {
-      // First attempt: quick ICE restart after 1 second (mobile recovery)
-      setTimeout(() => {
-        if (pc.iceConnectionState === 'disconnected' || pc.iceConnectionState === 'failed') {
-          console.log(`[WebRTC] Attempting ICE restart (1st) for peer: ${remotePeerId}`);
-          try {
-            pc.restartIce();
-          } catch {
-            // ignore
-          }
-        }
-      }, 1000);
+  // ICE reconnection with exponential backoff and proper cleanup
+  let iceRetryTimer: ReturnType<typeof setTimeout> | null = null;
+  let iceRetryAttempt = 0;
 
-      // Second attempt: retry after 5 seconds if still disconnected
-      setTimeout(() => {
-        if (pc.iceConnectionState === 'disconnected' || pc.iceConnectionState === 'failed') {
-          console.log(`[WebRTC] Attempting ICE restart (2nd) for peer: ${remotePeerId}`);
-          try {
-            pc.restartIce();
-          } catch {
-            // ignore
-          }
-        }
-      }, 5000);
+  pc.oniceconnectionstatechange = () => {
+    if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
+      // Connection restored — clear pending retry
+      if (iceRetryTimer) { clearTimeout(iceRetryTimer); iceRetryTimer = null; }
+      iceRetryAttempt = 0;
     }
 
-    // When connection is restored, log it
-    if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
-      console.log(`[WebRTC] Connection restored for peer: ${remotePeerId}`);
+    if (pc.iceConnectionState === 'disconnected' || pc.iceConnectionState === 'failed') {
+      // Cancel any existing retry before scheduling a new one
+      if (iceRetryTimer) { clearTimeout(iceRetryTimer); iceRetryTimer = null; }
+
+      const scheduleRetry = () => {
+        if (iceRetryAttempt >= 4) return; // give up after 4 attempts
+        // Backoff: 1s, 2s, 4s, 8s
+        const delay = Math.min(1000 * Math.pow(2, iceRetryAttempt), 8000);
+        iceRetryTimer = setTimeout(() => {
+          iceRetryTimer = null;
+          if (pc.iceConnectionState === 'disconnected' || pc.iceConnectionState === 'failed') {
+            try { pc.restartIce(); } catch { /* ignore */ }
+            iceRetryAttempt++;
+            scheduleRetry();
+          }
+        }, delay);
+      };
+      scheduleRetry();
     }
   };
 
