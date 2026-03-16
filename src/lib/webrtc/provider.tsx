@@ -764,15 +764,28 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
     switchDevice();
   }, [selectedDeviceId]);
 
-  // Apply output device (setSinkId) to all remote audio elements
+  // Keep a ref in sync so the audio element ref callback always has the latest value
+  const selectedOutputDeviceIdRef = useRef(selectedOutputDeviceId);
+  selectedOutputDeviceIdRef.current = selectedOutputDeviceId;
+
+  // Apply output device (setSinkId) to all remote audio elements when device changes
   useEffect(() => {
     if (!selectedOutputDeviceId) return;
-    Object.values(remoteAudioElementsRef.current).forEach(audio => {
+    const elements = remoteAudioElementsRef.current;
+    for (const peerId in elements) {
+      const audio = elements[peerId];
       if (audio && typeof (audio as any).setSinkId === 'function') {
-        (audio as any).setSinkId(selectedOutputDeviceId).catch(() => {});
+        try {
+          const current = (audio as any).sinkId;
+          if (current !== selectedOutputDeviceId) {
+            (audio as any).setSinkId(selectedOutputDeviceId).catch(() => {});
+          }
+        } catch {
+          (audio as any).setSinkId(selectedOutputDeviceId).catch(() => {});
+        }
       }
-    });
-  }, [selectedOutputDeviceId, remoteStreams]);
+    }
+  }, [selectedOutputDeviceId]);
 
   const startNoiseGateLoop = useCallback((nodes: NoiseSuppressionNodes) => {
     if (noiseGateTimerRef.current) {
@@ -1309,8 +1322,8 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
               }
               ensureRemoteAudioNode(peerId, stream);
               applyRemoteAudioState();
-              if (selectedOutputDeviceId && typeof (audio as any).setSinkId === 'function') {
-                (audio as any).setSinkId(selectedOutputDeviceId).catch(() => {});
+              if (selectedOutputDeviceIdRef.current && typeof (audio as any).setSinkId === 'function') {
+                (audio as any).setSinkId(selectedOutputDeviceIdRef.current).catch(() => {});
               }
               audio.play().catch(() => {});
             } else {
