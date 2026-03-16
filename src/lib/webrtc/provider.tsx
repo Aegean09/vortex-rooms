@@ -37,6 +37,10 @@ export interface BandwidthStats {
   totalBytesReceived: number;
   uploadRate: number;
   downloadRate: number;
+  /** Number of peer connections currently relayed through TURN */
+  relayCount: number;
+  /** Total number of active peer connections */
+  totalPeers: number;
 }
 
 // ── Voice Activity Context (high-frequency updates ~10fps) ──────────────
@@ -191,6 +195,8 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
     totalBytesReceived: 0,
     uploadRate: 0,
     downloadRate: 0,
+    relayCount: 0,
+    totalPeers: 0,
   });
   const prevBytesRef = useRef<{ sent: number; received: number; ts: number } | null>(null);
 
@@ -201,24 +207,36 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
       if (pcs.length === 0) {
         if (prevBytesRef.current) {
           prevBytesRef.current = null;
-          setBandwidthStats({ totalBytesSent: 0, totalBytesReceived: 0, uploadRate: 0, downloadRate: 0 });
+          setBandwidthStats({ totalBytesSent: 0, totalBytesReceived: 0, uploadRate: 0, downloadRate: 0, relayCount: 0, totalPeers: 0 });
         }
         return;
       }
 
       let sent = 0;
       let received = 0;
+      let relayCount = 0;
+      let activePeers = 0;
 
       for (const pc of pcs) {
         if (pc.connectionState === 'closed') continue;
+        activePeers++;
         try {
           const stats = await pc.getStats();
+          let isRelay = false;
           stats.forEach((report) => {
             if (report.type === 'transport') {
               sent += report.bytesSent ?? 0;
               received += report.bytesReceived ?? 0;
             }
+            // Detect TURN relay: selected candidate pair using relay candidate
+            if (report.type === 'candidate-pair' && report.state === 'succeeded') {
+              const localCandidate = stats.get(report.localCandidateId);
+              if (localCandidate?.candidateType === 'relay') {
+                isRelay = true;
+              }
+            }
           });
+          if (isRelay) relayCount++;
         } catch {
           // connection may have closed mid-call
         }
@@ -238,7 +256,7 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
       }
 
       prevBytesRef.current = { sent, received, ts: now };
-      setBandwidthStats({ totalBytesSent: sent, totalBytesReceived: received, uploadRate, downloadRate });
+      setBandwidthStats({ totalBytesSent: sent, totalBytesReceived: received, uploadRate, downloadRate, relayCount, totalPeers: activePeers });
     }, POLL_MS);
 
     return () => clearInterval(interval);

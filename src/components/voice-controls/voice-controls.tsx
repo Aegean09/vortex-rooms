@@ -31,7 +31,7 @@ import {
 import { Slider } from '@/components/ui/slider';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { getKeyDisplayName, rmsToPercent, percentToRms } from '@/helpers/audio-helpers';
-import { BandwidthIndicator } from '@/components/bandwidth-indicator/bandwidth-indicator';
+import { ConnectionStatusTooltip } from '@/components/bandwidth-indicator/bandwidth-indicator';
 import { formatShortcut, type ShortcutBinding } from '@/lib/webrtc/hooks/use-mute-shortcut';
 
 interface VoiceControlsProps {
@@ -141,7 +141,6 @@ export function VoiceControls({ currentUser, onAvatarChange }: VoiceControlsProp
   const [isRecordingKey, setIsRecordingKey] = useState(false);
   const [isAvatarPickerOpen, setIsAvatarPickerOpen] = useState(false);
   const [avatarOptions, setAvatarOptions] = useState<string[]>([]);
-  const [isCoarsePointer, setIsCoarsePointer] = useState(false);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const animationFrameRef = useRef<number | undefined>(undefined);
   // Hysteresis state for the local voice-activity preview
@@ -151,15 +150,6 @@ export function VoiceControls({ currentUser, onAvatarChange }: VoiceControlsProp
   const router = useRouter();
   const { toast } = useToast();
   const isMobile = useIsMobile();
-  const showBandwidthIndicator = !isMobile && !isCoarsePointer;
-
-  useEffect(() => {
-    const pointerQuery = window.matchMedia('(pointer: coarse)');
-    const updatePointerType = () => setIsCoarsePointer(pointerQuery.matches);
-    updatePointerType();
-    pointerQuery.addEventListener('change', updatePointerType);
-    return () => pointerQuery.removeEventListener('change', updatePointerType);
-  }, []);
 
   useEffect(() => {
     const streamToAnalyze = rawStream || localStream;
@@ -341,15 +331,16 @@ export function VoiceControls({ currentUser, onAvatarChange }: VoiceControlsProp
               </div>
               <div>
                 <p className="font-semibold text-sm">{currentUser.name}</p>
-                <p className={`text-xs ${hasMicPermission ? 'text-green-400' : 'text-red-400'}`}>
-                  {hasMicPermission ? 'Connected' : 'No Mic Access'}
-                </p>
+                {hasMicPermission ? (
+                  <ConnectionStatusTooltip stats={bandwidthStats} />
+                ) : (
+                  <p className="text-xs text-red-400">No Mic Access</p>
+                )}
               </div>
             </>
           )}
         </div>
         <div className="flex items-center gap-2">
-          {showBandwidthIndicator && <BandwidthIndicator stats={bandwidthStats} />}
 
           {/* Mute button with settings dropdown */}
           <div className="flex items-center">
