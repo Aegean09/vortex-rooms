@@ -37,7 +37,35 @@ export interface BandwidthStats {
   totalBytesReceived: number;
   uploadRate: number;
   downloadRate: number;
+  /** Number of peer connections currently relayed through TURN */
+  relayCount: number;
+  /** Total number of active peer connections */
+  totalPeers: number;
 }
+
+// ── Voice Activity Context (high-frequency updates ~10fps) ──────────────
+// Separated so components that only need voice activity don't re-render
+// when media/settings state changes, and vice versa.
+
+interface VoiceActivityContextType {
+  remoteVoiceActivity: Record<string, { isActive: boolean; level: number }>;
+  localVoiceActivity: boolean;
+  remoteVolumes: Record<string, number>;
+  setRemoteVolume: (peerId: string, volume: number) => void;
+  bandwidthStats: BandwidthStats;
+}
+
+const VoiceActivityContext = createContext<VoiceActivityContextType | undefined>(undefined);
+
+export const useVoiceActivity = () => {
+  const context = useContext(VoiceActivityContext);
+  if (!context) {
+    throw new Error('useVoiceActivity must be used within a WebRTCProvider');
+  }
+  return context;
+};
+
+// ── Main WebRTC Context (low-frequency updates) ─────────────────────────
 
 interface WebRTCContextType {
   localStream: MediaStream | null;
@@ -61,10 +89,6 @@ interface WebRTCContextType {
   setNoiseSuppressionEnabled: (enabled: boolean) => void;
   noiseSuppressionIntensity: number;
   setNoiseSuppressionIntensity: (intensity: number) => void;
-  remoteVoiceActivity: Record<string, { isActive: boolean; level: number }>;
-  localVoiceActivity: boolean;
-  remoteVolumes: Record<string, number>;
-  setRemoteVolume: (peerId: string, volume: number) => void;
   audioInputDevices: MediaDeviceInfo[];
   selectedDeviceId: string;
   setSelectedDeviceId: (deviceId: string) => void;
@@ -75,11 +99,16 @@ interface WebRTCContextType {
   androidAudioMode: string;
   setAndroidOutputMode: (mode: string) => void;
   reconnectMicrophone: () => Promise<void>;
-  bandwidthStats: BandwidthStats;
   muteShortcut: ShortcutBinding;
   deafenShortcut: ShortcutBinding;
   setMuteShortcut: (shortcut: ShortcutBinding) => void;
   setDeafenShortcut: (shortcut: ShortcutBinding) => void;
+  // Back-compat: also expose voice activity here so existing consumers don't break
+  remoteVoiceActivity: Record<string, { isActive: boolean; level: number }>;
+  localVoiceActivity: boolean;
+  remoteVolumes: Record<string, number>;
+  setRemoteVolume: (peerId: string, volume: number) => void;
+  bandwidthStats: BandwidthStats;
 }
 
 const WebRTCContext = createContext<WebRTCContextType | undefined>(undefined);
@@ -166,6 +195,8 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
     totalBytesReceived: 0,
     uploadRate: 0,
     downloadRate: 0,
+    relayCount: 0,
+    totalPeers: 0,
   });
   const prevBytesRef = useRef<{ sent: number; received: number; ts: number } | null>(null);
 
@@ -176,24 +207,36 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
       if (pcs.length === 0) {
         if (prevBytesRef.current) {
           prevBytesRef.current = null;
-          setBandwidthStats({ totalBytesSent: 0, totalBytesReceived: 0, uploadRate: 0, downloadRate: 0 });
+          setBandwidthStats({ totalBytesSent: 0, totalBytesReceived: 0, uploadRate: 0, downloadRate: 0, relayCount: 0, totalPeers: 0 });
         }
         return;
       }
 
       let sent = 0;
       let received = 0;
+      let relayCount = 0;
+      let activePeers = 0;
 
       for (const pc of pcs) {
         if (pc.connectionState === 'closed') continue;
+        activePeers++;
         try {
           const stats = await pc.getStats();
+          let isRelay = false;
           stats.forEach((report) => {
             if (report.type === 'transport') {
               sent += report.bytesSent ?? 0;
               received += report.bytesReceived ?? 0;
             }
+            // Detect TURN relay: selected candidate pair using relay candidate
+            if (report.type === 'candidate-pair' && report.state === 'succeeded') {
+              const localCandidate = stats.get(report.localCandidateId);
+              if (localCandidate?.candidateType === 'relay') {
+                isRelay = true;
+              }
+            }
           });
+          if (isRelay) relayCount++;
         } catch {
           // connection may have closed mid-call
         }
@@ -213,7 +256,7 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
       }
 
       prevBytesRef.current = { sent, received, ts: now };
-      setBandwidthStats({ totalBytesSent: sent, totalBytesReceived: received, uploadRate, downloadRate });
+      setBandwidthStats({ totalBytesSent: sent, totalBytesReceived: received, uploadRate, downloadRate, relayCount, totalPeers: activePeers });
     }, POLL_MS);
 
     return () => clearInterval(interval);
@@ -643,10 +686,8 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
     rawStream,
     peerConnections,
     reconnectMicrophone,
+    remoteAudioElementsRef,
     onConnectionRecovery: useCallback(() => {
-      // When recovering from background, we may need to re-establish connections
-      // The peer connection listeners will handle reconnection automatically
-      // but we should resume any suspended audio contexts
       if (playbackAudioContextRef.current?.state === 'suspended') {
         playbackAudioContextRef.current.resume().catch(() => {});
       }
@@ -655,11 +696,7 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
       }
     }, []),
     onBackgroundAutoMute: useCallback(() => {
-      // Auto-mute when mobile app goes to background (screen lock)
-      // Update local state so UI reflects muted status on return
       setIsMuted(true);
-
-      // Update Firestore so remote peers see the user as muted
       if (firestore && user) {
         const userDocRef = doc(firestore, 'sessions', sessionId, 'users', user.uid);
         updateDoc(userDocRef, { isMuted: true }).catch(() => {});
@@ -824,7 +861,7 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
       }
     };
 
-    noiseGateTimerRef.current = setInterval(processNoiseGate, 50);
+    noiseGateTimerRef.current = setInterval(processNoiseGate, 80);
   }, []);
 
   useEffect(() => {
@@ -1206,6 +1243,15 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
     };
   }, [firestore, localStream, sessionId, localPeerId, user, users, subSessionId, cleanupConnection, isScreenSharing]);
 
+  // Memoize the voice activity context value to avoid re-creating on every render
+  const voiceActivityValue = React.useMemo(() => ({
+    remoteVoiceActivity,
+    localVoiceActivity,
+    remoteVolumes,
+    setRemoteVolume,
+    bandwidthStats,
+  }), [remoteVoiceActivity, localVoiceActivity, remoteVolumes, setRemoteVolume, bandwidthStats]);
+
   return (
     <WebRTCContext.Provider value={{
       localStream,
@@ -1249,7 +1295,9 @@ export const WebRTCProvider: React.FC<WebRTCProviderProps> = ({
       setMuteShortcut,
       setDeafenShortcut,
     }}>
-      {children}
+      <VoiceActivityContext.Provider value={voiceActivityValue}>
+        {children}
+      </VoiceActivityContext.Provider>
       {Object.entries(remoteStreams).map(([peerId, stream]) => (
         <audio
           key={peerId}

@@ -1,6 +1,6 @@
 'use client';
 
-import { ArrowUp, ArrowDown } from 'lucide-react';
+import { ArrowUp, ArrowDown, Shield, Wifi } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import type { BandwidthStats } from '@/lib/webrtc/provider';
 
@@ -20,30 +20,47 @@ function formatTotal(bytes: number): string {
   return `${(mb / 1024).toFixed(2)} GB`;
 }
 
-interface BandwidthIndicatorProps {
+interface ConnectionStatusTooltipProps {
   stats: BandwidthStats;
 }
 
-export function BandwidthIndicator({ stats }: BandwidthIndicatorProps) {
-  const { totalBytesSent, totalBytesReceived, uploadRate, downloadRate } = stats;
+export function ConnectionStatusTooltip({ stats }: ConnectionStatusTooltipProps) {
+  const { totalBytesSent, totalBytesReceived, uploadRate, downloadRate, relayCount = 0, totalPeers = 0 } = stats;
+
+  const hasRelay = relayCount > 0;
+
+  const statusText = totalPeers > 0
+    ? hasRelay ? 'Connected (TURN)' : 'Connected (P2P)'
+    : 'Connected';
+
+  const statusColor = totalPeers > 0
+    ? hasRelay ? 'text-amber-400' : 'text-green-400'
+    : 'text-green-400';
 
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <div className="flex items-center gap-2 rounded-md border border-border/50 bg-background/50 px-2 py-1 text-[10px] font-mono text-muted-foreground select-none">
-          <span className="flex items-center gap-0.5">
-            <ArrowUp className="h-3 w-3 text-emerald-400" />
-            {formatRate(uploadRate)}
-          </span>
-          <span className="flex items-center gap-0.5">
-            <ArrowDown className="h-3 w-3 text-blue-400" />
-            {formatRate(downloadRate)}
-          </span>
-        </div>
+        <p className={`text-xs ${statusColor} cursor-default`}>
+          {statusText}
+        </p>
       </TooltipTrigger>
       <TooltipContent side="top" className="text-xs">
         <div className="space-y-1">
-          <p className="font-semibold">Network Usage (WebRTC)</p>
+          <p className="font-semibold">Network (WebRTC)</p>
+          {totalPeers > 0 && (
+            <div className="flex items-center gap-1.5">
+              {hasRelay ? (
+                <Shield className="h-3 w-3 text-amber-400" />
+              ) : (
+                <Wifi className="h-3 w-3 text-emerald-400" />
+              )}
+              <span>
+                {hasRelay
+                  ? `TURN relay: ${relayCount}/${totalPeers} peer${totalPeers > 1 ? 's' : ''}`
+                  : `Direct P2P: ${totalPeers} peer${totalPeers > 1 ? 's' : ''}`}
+              </span>
+            </div>
+          )}
           <div className="flex items-center gap-1.5">
             <ArrowUp className="h-3 w-3 text-emerald-400" />
             <span>Upload: {formatRate(uploadRate)} — Total: {formatTotal(totalBytesSent)}</span>

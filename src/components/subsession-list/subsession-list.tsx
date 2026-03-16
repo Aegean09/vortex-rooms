@@ -13,7 +13,7 @@ import { useFirestore } from '@/firebase';
 import { useParams } from 'next/navigation';
 import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
 import { nanoid } from 'nanoid';
-import { useWebRTC } from '@/lib/webrtc/provider';
+import { useWebRTC, useVoiceActivity } from '@/lib/webrtc/provider';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useToast } from '@/hooks/use-toast';
 import { MAX_USERS_PER_SUB_SESSION, SUBSESSION_NAME_MAX_LENGTH } from '@/constants/common';
@@ -40,7 +40,8 @@ export function SubSessionList({ subSessions, users, currentUser, onSubSessionCh
   const firestore = useFirestore();
   const params = useParams();
   const sessionId = params.sessionId as string;
-  const { remoteVoiceActivity, localVoiceActivity, isMuted, isDeafened, remoteVolumes, setRemoteVolume } = useWebRTC();
+  const { isMuted, isDeafened } = useWebRTC();
+  const { remoteVoiceActivity, localVoiceActivity, remoteVolumes, setRemoteVolume } = useVoiceActivity();
   const { toast } = useToast();
 
   useEffect(() => {
