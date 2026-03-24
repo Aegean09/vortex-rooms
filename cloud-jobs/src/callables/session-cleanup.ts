@@ -1,4 +1,4 @@
-import * as functions from 'firebase-functions';
+import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import * as admin from 'firebase-admin';
 import { deleteSubcollection } from '../helpers/firestore-batch-delete';
 
@@ -26,14 +26,14 @@ const deleteCollection = async (
   }
 };
 
-export const deleteSessionCompletely = functions.https.onCall(async (data: { sessionId?: string }, context) => {
-  if (!context.auth) {
-    throw new functions.https.HttpsError('unauthenticated', 'Must be signed in.');
+export const deleteSessionCompletely = onCall({ region: 'europe-west1' }, async (request) => {
+  if (!request.auth) {
+    throw new HttpsError('unauthenticated', 'Must be signed in.');
   }
 
-  const sessionId = data?.sessionId;
+  const sessionId = (request.data as { sessionId?: string })?.sessionId;
   if (!sessionId || typeof sessionId !== 'string') {
-    throw new functions.https.HttpsError('invalid-argument', 'sessionId is required.');
+    throw new HttpsError('invalid-argument', 'sessionId is required.');
   }
 
   const db = admin.firestore();
@@ -45,13 +45,13 @@ export const deleteSessionCompletely = functions.https.onCall(async (data: { ses
   }
 
   const usersSnap = await sessionRef.collection('users').get();
-  const isRequesterParticipant = usersSnap.docs.some((d) => d.id === context.auth?.uid);
+  const isRequesterParticipant = usersSnap.docs.some((d) => d.id === request.auth?.uid);
   if (!isRequesterParticipant) {
-    throw new functions.https.HttpsError('permission-denied', 'Only room participants can delete this room.');
+    throw new HttpsError('permission-denied', 'Only room participants can delete this room.');
   }
 
   if (usersSnap.size > 1) {
-    throw new functions.https.HttpsError('failed-precondition', 'Room still has multiple participants.');
+    throw new HttpsError('failed-precondition', 'Room still has multiple participants.');
   }
 
   for (const subcollection of SESSION_SUBCOLLECTIONS) {

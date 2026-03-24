@@ -1,4 +1,4 @@
-import * as functions from 'firebase-functions';
+import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import * as admin from 'firebase-admin';
 import * as crypto from 'crypto';
 
@@ -23,28 +23,28 @@ interface RevokeInviteData {
  * Callable: create an invite link token for an invite-only room.
  * Only the session creator may call this.
  */
-export const createInvite = functions.https.onCall(async (data: CreateInviteData, context) => {
-  if (!context.auth) {
-    throw new functions.https.HttpsError('unauthenticated', 'Must be signed in.');
+export const createInvite = onCall({ region: 'europe-west1' }, async (request) => {
+  if (!request.auth) {
+    throw new HttpsError('unauthenticated', 'Must be signed in.');
   }
-  const { sessionId, maxUses = 1 } = data;
+  const { sessionId, maxUses = 1 } = request.data as CreateInviteData;
   if (!sessionId || typeof sessionId !== 'string') {
-    throw new functions.https.HttpsError('invalid-argument', 'sessionId is required.');
+    throw new HttpsError('invalid-argument', 'sessionId is required.');
   }
   if (typeof maxUses !== 'number' || maxUses < 1 || maxUses > 50) {
-    throw new functions.https.HttpsError('invalid-argument', 'maxUses must be between 1 and 50.');
+    throw new HttpsError('invalid-argument', 'maxUses must be between 1 and 50.');
   }
 
   const sessionSnap = await db.doc(`sessions/${sessionId}`).get();
   if (!sessionSnap.exists) {
-    throw new functions.https.HttpsError('not-found', 'Session not found.');
+    throw new HttpsError('not-found', 'Session not found.');
   }
   const sessionData = sessionSnap.data();
-  if (sessionData?.createdBy !== context.auth.uid) {
-    throw new functions.https.HttpsError('permission-denied', 'Only the room creator can create invites.');
+  if (sessionData?.createdBy !== request.auth.uid) {
+    throw new HttpsError('permission-denied', 'Only the room creator can create invites.');
   }
   if (sessionData?.roomType !== 'invite-only') {
-    throw new functions.https.HttpsError('failed-precondition', 'Room is not invite-only.');
+    throw new HttpsError('failed-precondition', 'Room is not invite-only.');
   }
 
   // URL-safe random token (equivalent to nanoid(21))
@@ -56,7 +56,7 @@ export const createInvite = functions.https.onCall(async (data: CreateInviteData
     usedCount: 0,
     usedBy: [],
     createdAt: admin.firestore.FieldValue.serverTimestamp(),
-    createdBy: context.auth.uid,
+    createdBy: request.auth.uid,
   });
 
   return { ok: true, token, inviteId: inviteRef.id };
@@ -66,13 +66,13 @@ export const createInvite = functions.https.onCall(async (data: CreateInviteData
  * Callable: redeem an invite token. Validates and increments usage.
  * Returns { ok: true } on success or { ok: false, reason } on failure.
  */
-export const redeemInvite = functions.https.onCall(async (data: RedeemInviteData, context) => {
-  if (!context.auth) {
-    throw new functions.https.HttpsError('unauthenticated', 'Must be signed in.');
+export const redeemInvite = onCall({ region: 'europe-west1' }, async (request) => {
+  if (!request.auth) {
+    throw new HttpsError('unauthenticated', 'Must be signed in.');
   }
-  const { sessionId, token } = data;
+  const { sessionId, token } = request.data as RedeemInviteData;
   if (!sessionId || typeof sessionId !== 'string' || !token || typeof token !== 'string') {
-    throw new functions.https.HttpsError('invalid-argument', 'sessionId and token are required.');
+    throw new HttpsError('invalid-argument', 'sessionId and token are required.');
   }
 
   // Check if user is the creator — they bypass invite check
@@ -81,10 +81,10 @@ export const redeemInvite = functions.https.onCall(async (data: RedeemInviteData
   if (!sessionSnap.exists) {
     return { ok: false, reason: 'Session not found.' };
   }
-  if (sessionSnap.data()?.createdBy === context.auth.uid) {
+  if (sessionSnap.data()?.createdBy === request.auth.uid) {
     // Creator bypass: add to approvedUsers so Firestore rules allow user doc creation
     await sessionRef.update({
-      approvedUsers: admin.firestore.FieldValue.arrayUnion(context.auth.uid),
+      approvedUsers: admin.firestore.FieldValue.arrayUnion(request.auth.uid),
     });
     return { ok: true };
   }
@@ -101,17 +101,28 @@ export const redeemInvite = functions.https.onCall(async (data: RedeemInviteData
 
   const inviteRef = invitesSnap.docs[0].ref;
 
-  // Use a transaction to atomically check usage limits and increment.
-  // This prevents concurrent requests from exceeding maxUses.
+  // Use a transaction to atomically check usage limits, increment usage,
+  // and add the user to approvedUsers on the session doc.
+  // Both writes are inside the transaction to ensure strong consistency —
+  // the client's subsequent Firestore rule check will see the approvedUsers update.
   const result = await db.runTransaction(async (tx) => {
     const inviteSnap = await tx.get(inviteRef);
+    const sessionSnapInTx = await tx.get(sessionRef);
+
     if (!inviteSnap.exists) {
       return { ok: false as const, reason: 'Invalid or expired invite link.' };
+    }
+    if (!sessionSnapInTx.exists) {
+      return { ok: false as const, reason: 'Session not found.' };
     }
     const inviteData = inviteSnap.data()!;
 
     // Check if user already redeemed
-    if (inviteData.usedBy?.includes(context.auth!.uid)) {
+    if (inviteData.usedBy?.includes(request.auth!.uid)) {
+      // Still ensure approvedUsers is set (idempotent)
+      tx.update(sessionRef, {
+        approvedUsers: admin.firestore.FieldValue.arrayUnion(request.auth!.uid),
+      });
       return { ok: true as const }; // Already redeemed, allow re-entry
     }
 
@@ -123,20 +134,16 @@ export const redeemInvite = functions.https.onCall(async (data: RedeemInviteData
     // Redeem: increment count and add uid atomically within the transaction
     tx.update(inviteRef, {
       usedCount: inviteData.usedCount + 1,
-      usedBy: admin.firestore.FieldValue.arrayUnion(context.auth!.uid),
+      usedBy: admin.firestore.FieldValue.arrayUnion(request.auth!.uid),
+    });
+
+    // Add user to approvedUsers on the session doc within the same transaction
+    tx.update(sessionRef, {
+      approvedUsers: admin.firestore.FieldValue.arrayUnion(request.auth!.uid),
     });
 
     return { ok: true as const };
   });
-
-  // After successful redeem, add user to approvedUsers on session doc.
-  // This is idempotent (arrayUnion) and done outside the transaction since
-  // it operates on a different document.
-  if (result.ok) {
-    await sessionRef.update({
-      approvedUsers: admin.firestore.FieldValue.arrayUnion(context.auth.uid),
-    });
-  }
 
   return result;
 });
@@ -144,21 +151,21 @@ export const redeemInvite = functions.https.onCall(async (data: RedeemInviteData
 /**
  * Callable: revoke an invite. Only the session creator may call this.
  */
-export const revokeInvite = functions.https.onCall(async (data: RevokeInviteData, context) => {
-  if (!context.auth) {
-    throw new functions.https.HttpsError('unauthenticated', 'Must be signed in.');
+export const revokeInvite = onCall({ region: 'europe-west1' }, async (request) => {
+  if (!request.auth) {
+    throw new HttpsError('unauthenticated', 'Must be signed in.');
   }
-  const { sessionId, inviteId } = data;
+  const { sessionId, inviteId } = request.data as RevokeInviteData;
   if (!sessionId || typeof sessionId !== 'string' || !inviteId || typeof inviteId !== 'string') {
-    throw new functions.https.HttpsError('invalid-argument', 'sessionId and inviteId are required.');
+    throw new HttpsError('invalid-argument', 'sessionId and inviteId are required.');
   }
 
   const sessionSnap = await db.doc(`sessions/${sessionId}`).get();
   if (!sessionSnap.exists) {
-    throw new functions.https.HttpsError('not-found', 'Session not found.');
+    throw new HttpsError('not-found', 'Session not found.');
   }
-  if (sessionSnap.data()?.createdBy !== context.auth.uid) {
-    throw new functions.https.HttpsError('permission-denied', 'Only the room creator can revoke invites.');
+  if (sessionSnap.data()?.createdBy !== request.auth.uid) {
+    throw new HttpsError('permission-denied', 'Only the room creator can revoke invites.');
   }
 
   await db.doc(`sessions/${sessionId}/invites/${inviteId}`).delete();

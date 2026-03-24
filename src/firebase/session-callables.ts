@@ -5,7 +5,7 @@ import { getFunctions, httpsCallable } from 'firebase/functions';
 
 function getFunctionsInstance() {
   const app = getApp();
-  return getFunctions(app);
+  return getFunctions(app, 'europe-west1');
 }
 
 export async function callDeleteSessionCompletely(sessionId: string): Promise<{ ok: boolean }> {

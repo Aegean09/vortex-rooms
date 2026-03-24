@@ -42,6 +42,7 @@ export const onReportCreated = onDocumentCreated(
   {
     document: 'abuseReports/{reportId}',
     secrets: [gmailPassword],
+    region: 'europe-west1',
   },
   async (event) => {
     const data = event.data?.data() as ReportData | undefined;
