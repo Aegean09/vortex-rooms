@@ -31,7 +31,23 @@
       "Bash(powershell -Command \"reg query 'HKEY_LOCAL_MACHINE\\\\SOFTWARE\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\AppModelUnlock' /v AllowDevelopmentWithoutDevLicense 2>$null\")",
       "Bash(reg query:*)",
       "Bash(cd C:/Users/ege_d/Projects/vortex-rooms/src-tauri/gen/android && ./gradlew assembleRelease 2>&1)",
-      "Bash(find . -name \"*.json\" -path \"*/package.json\" -type f | head -2 | xargs grep -l \"@dicebear\\\\|olm\\\\|rnnoise\" 2>/dev/null)"
+      "Bash(find . -name \"*.json\" -path \"*/package.json\" -type f | head -2 | xargs grep -l \"@dicebear\\\\|olm\\\\|rnnoise\" 2>/dev/null)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(gh api:*)",
+      "Bash(gh:*)",
+      "Bash(claude plugin:*)",
+      "Read(//Users/ege.durmaz/.claude/plugins/**)",
+      "Read(//Users/ege.durmaz/.claude/**)",
+      "Bash(npm run:*)",
+      "Bash(grep -r \"region\\\\|Region\" /Users/ege.durmaz/Projects/my-own/vortex-rooms/cloud-jobs/src --include=*.ts)",
+      "Bash(find:*)",
+      "Bash(ls:*)",
+      "Bash(npm ls:*)",
+      "Bash(git diff:*)",
+      "Bash(echo \"EXIT_CODE=$?\")",
+      "Bash(echo \"EXIT_CODE=$PIPESTATUS[0]\")",
+      "Bash(grep -r \"ThemePicker\\\\|theme.*picker\\\\|Dark Mode\\\\|Theme\" /Users/ege.durmaz/Projects/my-own/vortex-rooms/src/components --include=*.tsx --include=*.ts)"
     ],
     "additionalDirectories": [
       "c:\\Users\\ege_d\\.claude"

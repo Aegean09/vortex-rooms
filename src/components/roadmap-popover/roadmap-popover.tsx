@@ -26,7 +26,6 @@ import {
   CheckCircle2,
   UserPlus,
   AudioLines,
-  Monitor,
 } from 'lucide-react';
 
 
@@ -41,12 +40,11 @@ const ROADMAP_FEATURES: RoadmapFeature[] = [
   // Done
   { icon: Lock, label: 'E2E Message Encryption', status: 'done' as const },
   { icon: AudioLines, label: 'Noise Suppression (RNNoise)', status: 'done' as const },
-  { icon: Monitor, label: 'Desktop App (Tauri)', status: 'done' as const },
   { icon: Globe, label: 'TURN Server (NAT Traversal)', status: 'done' as const },
   { icon: UserPlus, label: 'Invite Only Rooms', status: 'done' as const },
   { icon: Paintbrush, label: 'Custom Themes', status: 'done' as const },
   // In Progress
-  { icon: Smartphone, label: 'Mobile Application', status: 'in_progress' as const },
+  { icon: Smartphone, label: 'Application Certifications', status: 'in_progress' as const },
   // Planned
   { icon: Radio, label: 'SFU (Scalable Voice/Video)', status: 'planned' as const },
   { icon: Camera, label: 'Camera / Video Chat', status: 'planned' as const },

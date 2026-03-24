@@ -5,8 +5,7 @@ import {
   THEMES,
   DEFAULT_THEME_ID,
   DEFAULT_MODE,
-  DARK_NEUTRALS,
-  LIGHT_NEUTRALS,
+  buildThemeVars,
   type Theme,
   type ThemeMode,
 } from '@/config/themes';
@@ -24,20 +23,10 @@ function getThemeById(id: string): Theme | undefined {
   return THEMES.find((t) => t.id === id);
 }
 
-function applyThemeColors(theme: Theme) {
+function applyFullTheme(theme: Theme, mode: ThemeMode) {
+  const vars = buildThemeVars(theme, mode);
   const s = document.documentElement.style;
-  s.setProperty('--primary', theme.primary);
-  s.setProperty('--accent', theme.accent);
-  s.setProperty('--ring', theme.primary);
-  s.setProperty('--sidebar-primary', theme.primary);
-  s.setProperty('--sidebar-accent', theme.accent);
-  s.setProperty('--sidebar-ring', theme.primary);
-}
-
-function applyMode(mode: ThemeMode) {
-  const s = document.documentElement.style;
-  const neutrals = mode === 'dark' ? DARK_NEUTRALS : LIGHT_NEUTRALS;
-  for (const [key, value] of Object.entries(neutrals)) {
+  for (const [key, value] of Object.entries(vars)) {
     s.setProperty(key, value);
   }
   if (mode === 'dark') {
@@ -48,41 +37,46 @@ function applyMode(mode: ThemeMode) {
 }
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [themeId, setThemeId] = useState(() => {
-    try {
-      const stored = localStorage.getItem('vortex-theme');
-      if (stored && getThemeById(stored)) return stored;
-    } catch {}
-    return DEFAULT_THEME_ID;
-  });
+  // Always initialize with defaults (matches SSR). The FOUC script handles
+  // the visual appearance before React hydrates; we sync state in useEffect.
+  const [themeId, setThemeId] = useState(DEFAULT_THEME_ID);
+  const [mode, setModeState] = useState<ThemeMode>(DEFAULT_MODE);
 
-  const [mode, setModeState] = useState<ThemeMode>(() => {
-    try {
-      const stored = localStorage.getItem('vortex-mode');
-      if (stored === 'light' || stored === 'dark') return stored;
-    } catch {}
-    return DEFAULT_MODE;
-  });
-
-  // Apply on mount (in case FOUC script didn't run, e.g. SSR edge cases)
+  // Sync from localStorage after mount (avoids hydration mismatch)
   useEffect(() => {
-    const theme = getThemeById(themeId);
-    if (theme) applyThemeColors(theme);
-    applyMode(mode);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    let storedTheme = DEFAULT_THEME_ID;
+    let storedMode: ThemeMode = DEFAULT_MODE;
+    try {
+      const t = localStorage.getItem('vortex-theme');
+      if (t && getThemeById(t)) storedTheme = t;
+      const m = localStorage.getItem('vortex-mode');
+      if (m === 'light' || m === 'dark') storedMode = m;
+    } catch {}
+    setThemeId(storedTheme);
+    setModeState(storedMode);
+    const theme = getThemeById(storedTheme);
+    if (theme) applyFullTheme(theme, storedMode);
+  }, []);
 
   const setTheme = useCallback((id: string) => {
     const theme = getThemeById(id);
     if (!theme) return;
-    applyThemeColors(theme);
     setThemeId(id);
-    try { localStorage.setItem('vortex-theme', id); } catch {}
+    setModeState((currentMode) => {
+      applyFullTheme(theme, currentMode);
+      try { localStorage.setItem('vortex-theme', id); } catch {}
+      return currentMode;
+    });
   }, []);
 
   const setMode = useCallback((newMode: ThemeMode) => {
-    applyMode(newMode);
     setModeState(newMode);
-    try { localStorage.setItem('vortex-mode', newMode); } catch {}
+    setThemeId((currentThemeId) => {
+      const theme = getThemeById(currentThemeId);
+      if (theme) applyFullTheme(theme, newMode);
+      try { localStorage.setItem('vortex-mode', newMode); } catch {}
+      return currentThemeId;
+    });
   }, []);
 
   return (
