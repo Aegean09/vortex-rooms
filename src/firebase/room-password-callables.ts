@@ -13,7 +13,7 @@ export interface VerifyRoomPasswordResult {
 
 function getFunctionsInstance() {
   const app = getApp();
-  return getFunctions(app);
+  return getFunctions(app, 'europe-west1');
 }
 
 export async function callSetRoomPassword(sessionId: string, password: string): Promise<{ ok: boolean }> {

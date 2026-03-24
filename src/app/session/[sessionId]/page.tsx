@@ -6,6 +6,7 @@ import { ChatArea } from '@/components/chat-area/chat-area';
 import { SubSessionList } from '@/components/subsession-list/subsession-list';
 import { ShareLink } from '@/components/share-link/share-link';
 import InviteManager from '@/components/invite-manager/invite-manager';
+import ThemePicker from '@/components/theme-picker/theme-picker';
 import { Lobby } from '@/components/lobby/lobby';
 import { ScreenShareView } from '@/components/screen-share-view/screen-share-view';
 import { RoomNotFound } from '@/components/room-not-found/room-not-found';
@@ -445,11 +446,14 @@ export default function SessionPage() {
 
         <div className="flex flex-1 gap-4 min-h-0">
           <aside className="w-[300px] hidden md:flex flex-col gap-2">
-            <div className="flex items-center justify-center gap-2 px-1">
-              <div className="p-2 rounded-md bg-primary/15">
-                <Sparkles className="h-5 w-5 text-primary" />
+            <div className="flex items-center justify-between px-2">
+              <div className="flex items-center gap-2">
+                <div className="p-2 rounded-md bg-primary/15">
+                  <Sparkles className="h-5 w-5 text-primary" />
+                </div>
+                <span className="text-xl font-bold tracking-tight text-primary">Vortex</span>
               </div>
-              <span className="text-xl font-bold tracking-tight text-primary">Vortex</span>
+              <ThemePicker variant="grid" />
             </div>
             {sessionData?.roomType !== 'invite-only' && <ShareLink />}
             {isCreator && sessionData?.roomType === 'invite-only' && <InviteManager />}

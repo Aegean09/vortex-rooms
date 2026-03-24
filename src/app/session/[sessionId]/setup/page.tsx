@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useAuth, useUser, useFirestore, setDocumentNonBlocking, useMemoFirebase, useDoc } from '@/firebase';
-import { doc, serverTimestamp, setDoc } from 'firebase/firestore';
+import { doc, serverTimestamp, setDoc, collection, getDocs } from 'firebase/firestore';
 import { callSetRoomPassword, callVerifyRoomPassword } from '@/firebase/room-password-callables';
 import { callRedeemInvite } from '@/firebase/invite-callables';
 import { initiateAnonymousSignIn } from '@/firebase/non-blocking-login';
@@ -387,17 +387,25 @@ export default function SetupPage() {
 
     setIsJoining(true);
     const existingMaxUsers = sessionData?.maxUsers;
-    const currentParticipantCount = sessionData?.participantCount ?? 0;
 
-    if (existingMaxUsers && currentParticipantCount >= existingMaxUsers) {
-      toast({
-        variant: 'destructive',
-        title: 'Room Full',
-        description: `This room has reached its maximum capacity of ${existingMaxUsers} users.`,
-      });
-      setIsJoining(false);
-      router.push('/');
-      return;
+    // Use actual user subcollection count instead of potentially stale participantCount
+    if (existingMaxUsers) {
+      try {
+        const usersRef = collection(firestore, 'sessions', sessionId, 'users');
+        const usersSnap = await getDocs(usersRef);
+        if (usersSnap.size >= existingMaxUsers) {
+          toast({
+            variant: 'destructive',
+            title: 'Room Full',
+            description: `This room has reached its maximum capacity of ${existingMaxUsers} users.`,
+          });
+          setIsJoining(false);
+          router.push('/');
+          return;
+        }
+      } catch {
+        // If we can't verify, fall through and let Firestore rules enforce capacity
+      }
     }
 
     cleanupAudio();

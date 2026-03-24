@@ -5,6 +5,8 @@ import { FirebaseClientProvider } from '@/firebase';
 import { BuyMeACoffeeWidget } from '@/components/buy-me-a-coffee-widget/buy-me-a-coffee-widget';
 import { TauriUpdater } from '@/components/tauri-updater';
 import { TauriCloseConfirmation } from '@/components/tauri-close-confirmation';
+import { ThemeProvider } from '@/components/theme-provider';
+import { buildFoucScriptContent } from '@/config/themes';
 
 export const metadata: Metadata = {
   title: 'Vortex',
@@ -17,8 +19,9 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="dark" suppressHydrationWarning>
+    <html lang="en" suppressHydrationWarning>
       <head>
+        <script dangerouslySetInnerHTML={{ __html: buildFoucScriptContent() }} />
         <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
@@ -28,13 +31,15 @@ export default function RootLayout({
         />
       </head>
       <body className="font-body antialiased" suppressHydrationWarning>
-        <FirebaseClientProvider>
-          {children}
-        </FirebaseClientProvider>
-        <Toaster />
-        <BuyMeACoffeeWidget />
-        <TauriUpdater />
-        <TauriCloseConfirmation />
+        <ThemeProvider>
+          <FirebaseClientProvider>
+            {children}
+          </FirebaseClientProvider>
+          <Toaster />
+          <BuyMeACoffeeWidget />
+          <TauriUpdater />
+          <TauriCloseConfirmation />
+        </ThemeProvider>
       </body>
     </html>
   );

@@ -33,6 +33,7 @@ import { useIsMobile } from '@/hooks/use-mobile';
 import { getKeyDisplayName, rmsToPercent, percentToRms } from '@/helpers/audio-helpers';
 import { ConnectionStatusTooltip } from '@/components/bandwidth-indicator/bandwidth-indicator';
 import { formatShortcut, type ShortcutBinding } from '@/lib/webrtc/hooks/use-mute-shortcut';
+import ThemePicker from '@/components/theme-picker/theme-picker';
 
 interface VoiceControlsProps {
   currentUser: User | null;
@@ -564,6 +565,10 @@ export function VoiceControls({ currentUser, onAvatarChange }: VoiceControlsProp
                       />
                     </div>
                   )}
+                  <div className="space-y-2 pt-2 border-t">
+                    <span className="text-xs font-medium">Theme</span>
+                    <ThemePicker />
+                  </div>
                 </div>
               </PopoverContent>
             </Popover>

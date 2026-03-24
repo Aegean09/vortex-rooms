@@ -1,4 +1,4 @@
-import * as functions from 'firebase-functions';
+import { onSchedule } from 'firebase-functions/v2/scheduler';
 import * as admin from 'firebase-admin';
 
 const STALE_THRESHOLD_SECONDS = 60; // 1 minute - users with lastSeen older than this are removed
@@ -7,10 +7,7 @@ const STALE_THRESHOLD_SECONDS = 60; // 1 minute - users with lastSeen older than
  * Scheduled job that runs every 5 minutes to clean up stale users
  * who didn't properly leave (browser crash, mobile close, etc.)
  */
-export const cleanupStaleUsers = functions.pubsub
-  .schedule('every 5 minutes')
-  .timeZone('UTC')
-  .onRun(async () => {
+export const cleanupStaleUsers = onSchedule({ schedule: 'every 5 minutes', timeZone: 'UTC', region: 'europe-west1' }, async () => {
     const db = admin.firestore();
     const now = admin.firestore.Timestamp.now();
     const staleThreshold = new admin.firestore.Timestamp(
@@ -91,8 +88,17 @@ export const cleanupStaleUsers = functions.pubsub
       if (callBatchCount > 0) {
         await callBatch.commit();
       }
+
+      // Reconcile participantCount with actual remaining users
+      const remainingUsersSnap = await usersRef.get();
+      const actualCount = remainingUsersSnap.size;
+      const sessionData = sessionDoc.data();
+      const recordedCount = sessionData?.participantCount;
+      if (recordedCount !== undefined && recordedCount !== actualCount) {
+        await db.doc(`sessions/${sessionId}`).update({ participantCount: actualCount });
+        console.log(`[cleanupStaleUsers] Reconciled participantCount for session ${sessionId}: ${recordedCount} -> ${actualCount}`);
+      }
     }
 
     console.log(`[cleanupStaleUsers] Removed ${totalRemoved} stale users total`);
-    return null;
   });
