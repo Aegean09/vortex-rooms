@@ -10,6 +10,7 @@ import { useAuth, useUser } from '@/firebase';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { initiateAnonymousSignIn } from '@/firebase/non-blocking-login';
 import { generateRoomCode } from '@/lib/room-code';
+import ThemePicker from '@/components/theme-picker/theme-picker';
 export default function HomePage() {
   const router = useRouter();
   const auth = useAuth();
@@ -78,6 +79,9 @@ export default function HomePage() {
                 <LogIn className="mr-2 h-5 w-5" />
                 Join a Room
               </Button>
+            </div>
+            <div className="flex justify-center pt-2">
+              <ThemePicker />
             </div>
           </CardContent>
         </Card>
